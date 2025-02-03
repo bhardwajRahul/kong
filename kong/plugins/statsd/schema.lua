@@ -1,6 +1,5 @@
 local typedefs = require "kong.db.schema.typedefs"
 local constants = require "kong.plugins.statsd.constants"
-local deprecation = require("kong.deprecation")
 
 
 local METRIC_NAMES = {
@@ -28,7 +27,6 @@ local SERVICE_IDENTIFIERS = {
 local WORKSPACE_IDENTIFIERS = {
   "workspace_id", "workspace_name",
 }
-
 
 local DEFAULT_METRICS = {
   {
@@ -123,6 +121,7 @@ local DEFAULT_METRICS = {
   },
 }
 
+
 local TAG_TYPE = {
   "dogstatsd", "influxdb",
   "librato", "signalfx",
@@ -149,21 +148,28 @@ return {
     { config = {
         type = "record",
         fields = {
-          { host = typedefs.host({ default = "localhost" }), },
-          { port = typedefs.port({ default = 8125 }), },
-          { prefix = { type = "string", default = "kong" }, },
-          { metrics = {
-              type = "array",
+          { host = typedefs.host({
+              default = "localhost",
+              description = "The IP address or hostname of StatsD server to send data to."
+            })
+          },
+          { port = typedefs.port({
+              default = 8125,
+              description = "The port of StatsD server to send data to."
+            })
+          },
+          { prefix = { description = "String to prefix to each metric's name.", type = "string", default = "kong" }, },
+          { metrics = { description = "List of metrics to be logged.", type = "array",
               default = DEFAULT_METRICS,
               elements = {
                 type = "record",
                 fields = {
-                  { name = { type = "string", required = true, one_of = METRIC_NAMES }, },
-                  { stat_type = { type = "string", required = true, one_of = STAT_TYPES }, },
-                  { sample_rate = { type = "number", gt = 0 }, },
-                  { consumer_identifier = { type = "string", one_of = CONSUMER_IDENTIFIERS }, },
-                  { service_identifier = { type = "string", one_of = SERVICE_IDENTIFIERS }, },
-                  { workspace_identifier = { type = "string", one_of = WORKSPACE_IDENTIFIERS }, },
+                  { name = { description = "StatsD metric’s name.", type = "string", required = true, one_of = METRIC_NAMES }, },
+                  { stat_type = { description = "Determines what sort of event a metric represents.", type = "string", required = true, one_of = STAT_TYPES }, },
+                  { sample_rate = { description = "Sampling rate", type = "number", gt = 0 }, },
+                  { consumer_identifier = { description = "Authenticated user detail.", type = "string", one_of = CONSUMER_IDENTIFIERS }, },
+                  { service_identifier = { description = "Service detail.", type = "string", one_of = SERVICE_IDENTIFIERS }, },
+                  { workspace_identifier = { description = "Workspace detail.", type = "string", one_of = WORKSPACE_IDENTIFIERS }, },
                 },
                 entity_checks = {
                   { conditional = {
@@ -175,8 +181,7 @@ return {
                 },
               },
           }, },
-          { allow_status_codes = {
-            type = "array",
+          { allow_status_codes = { description = "List of status code ranges that are allowed to be logged in metrics.", type = "array",
             elements = {
               type = "string",
               match = constants.REGEX_STATUS_CODE_RANGE,
@@ -190,31 +195,26 @@ return {
           { consumer_identifier_default = { type = "string", required = true, default = "custom_id", one_of = CONSUMER_IDENTIFIERS }, },
           { service_identifier_default = { type = "string", required = true, default = "service_name_or_host", one_of = SERVICE_IDENTIFIERS }, },
           { workspace_identifier_default = { type = "string", required = true, default = "workspace_id", one_of = WORKSPACE_IDENTIFIERS }, },
-          { retry_count = { type = "integer" }, },
-          { queue_size = { type = "integer" }, },
-          { flush_timeout = { type = "number" }, },
+          { retry_count = {
+              type = "integer",
+              deprecation = {
+                message = "statsd: config.retry_count no longer works, please use config.queue.max_retry_time instead",
+                removal_in_version = "4.0",
+                old_default = 10 }, }, },
+          { queue_size = {
+              type = "integer",
+              deprecation = {
+                message = "statsd: config.queue_size is deprecated, please use config.queue.max_batch_size instead",
+                removal_in_version = "4.0",
+                old_default = 1 }, }, },
+          { flush_timeout = {
+              type = "number",
+              deprecation = {
+                message = "statsd: config.flush_timeout is deprecated, please use config.queue.max_coalescing_delay instead",
+                removal_in_version = "4.0",
+                old_default = 2 }, }, },
           { tag_style = { type = "string", required = false, one_of = TAG_TYPE }, },
           { queue = typedefs.queue },
-        },
-        entity_checks = {
-          { custom_entity_check = {
-            field_sources = { "retry_count", "queue_size", "flush_timeout" },
-            fn = function(entity)
-              if (entity.retry_count or ngx.null) ~= ngx.null and entity.retry_count ~= 10 then
-                deprecation("statsd: config.retry_count no longer works, please use config.queue.max_retry_time instead",
-                            { after = "4.0", })
-              end
-              if (entity.queue_size or ngx.null) ~= ngx.null and entity.queue_size ~= 1 then
-                deprecation("statsd: config.queue_size is deprecated, please use config.queue.max_batch_size instead",
-                            { after = "4.0", })
-              end
-              if (entity.flush_timeout or ngx.null) ~= ngx.null and entity.flush_timeout ~= 2 then
-                deprecation("statsd: config.flush_timeout is deprecated, please use config.queue.max_coalescing_delay instead",
-                            { after = "4.0", })
-              end
-              return true
-            end
-          } },
         },
       },
     },

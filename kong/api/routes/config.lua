@@ -1,3 +1,4 @@
+local buffer = require("string.buffer")
 local declarative = require("kong.db.declarative")
 local reports = require("kong.reports")
 local errors = require("kong.db.errors")
@@ -6,7 +7,6 @@ local errors = require("kong.db.errors")
 local kong = kong
 local ngx = ngx
 local type = type
-local table = table
 local tostring = tostring
 
 
@@ -27,14 +27,15 @@ end
 local function truthy(val)
   if type(val) == "string" then
     val = val:lower()
+
+    return val == "true"
+        or val == "1"
+        or val == "on"
+        or val == "yes"
   end
 
   return val == true
       or val == 1
-      or val == "true"
-      or val == "1"
-      or val == "on"
-      or val == "yes"
 end
 
 
@@ -93,9 +94,9 @@ return {
       end
 
       local file = {
-        buffer = {},
+        buf = buffer.new(),
         write = function(self, str)
-          self.buffer[#self.buffer + 1] = str
+          self.buf:put(str)
         end,
       }
 
@@ -105,7 +106,7 @@ return {
         return kong.response.exit(500, { message = "An unexpected error occurred" })
       end
 
-      return kong.response.exit(200, { config = table.concat(file.buffer) })
+      return kong.response.exit(200, { config = file.buf:get() })
     end,
     POST = function(self, db)
       if kong.db.strategy ~= "off" then
@@ -118,7 +119,13 @@ return {
       local opts = parse_config_post_opts(self.params)
 
       local old_hash = opts.check_hash and declarative.get_current_hash()
-      local dc = declarative.new_config(kong.configuration)
+
+      local dc = kong.db.declarative_config
+      if not dc then
+        kong.log.crit("received POST request to /config endpoint, but ",
+                      "kong.db.declarative_config was not initialized")
+        return kong.response.exit(500, { message = "An unexpected error occurred" })
+      end
 
       local dc_table, new_hash = hydrate_config_from_request(self.params, dc)
 

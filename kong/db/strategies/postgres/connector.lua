@@ -1,11 +1,10 @@
 local logger       = require "kong.cmd.utils.log"
-local utils        = require "kong.tools.utils"
 local pgmoon       = require "pgmoon"
 local arrays       = require "pgmoon.arrays"
-local stringx      = require "pl.stringx"
 local semaphore    = require "ngx.semaphore"
-local kong_global = require "kong.global"
-local constants = require "kong.constants"
+local kong_global  = require "kong.global"
+local constants    = require "kong.constants"
+local db_utils     = require "kong.db.utils"
 
 
 local setmetatable = setmetatable
@@ -20,7 +19,6 @@ local floor        = math.floor
 local type         = type
 local ngx          = ngx
 local timer_every  = ngx.timer.every
-local update_time  = ngx.update_time
 local get_phase    = ngx.get_phase
 local null         = ngx.null
 local now          = ngx.now
@@ -28,9 +26,11 @@ local log          = ngx.log
 local match        = string.match
 local fmt          = string.format
 local sub          = string.sub
-local utils_toposort = utils.topological_sort
+local utils_toposort = db_utils.topological_sort
 local insert       = table.insert
-local table_merge  = utils.table_merge
+local table_merge  = require("kong.tools.table").table_merge
+local strip        = require("kong.tools.string").strip
+local now_updated  = require("kong.tools.time").get_updated_now
 
 
 local WARN                          = ngx.WARN
@@ -52,12 +52,6 @@ local OPERATIONS = {
 }
 local ADMIN_API_PHASE = kong_global.phases.admin_api
 local CORE_ENTITIES = constants.CORE_ENTITIES
-
-
-local function now_updated()
-  update_time()
-  return now()
-end
 
 
 local function iterator(rows)
@@ -145,6 +139,7 @@ do
     local res, err = utils_toposort(table_names, get_table_name_neighbors)
 
     if res then
+      insert(res, 1, "clustering_rpc_requests")
       insert(res, 1, "cluster_events")
     end
 
@@ -195,10 +190,7 @@ local setkeepalive
 
 local function reconnect(config)
   local phase = get_phase()
-  if phase == "init" or phase == "init_worker" or ngx.IS_CLI then
-    -- Force LuaSocket usage in the CLI in order to allow for self-signed
-    -- certificates to be trusted (via opts.cafile) in the resty-cli
-    -- interpreter (no way to set lua_ssl_trusted_certificate).
+  if phase == "init" or phase == "init_worker" then
     config.socket_type = "luasocket"
 
   else
@@ -219,16 +211,16 @@ local function reconnect(config)
     return nil, err
   end
 
-  if connection.sock:getreusedtimes() == 0 then
-    if config.schema == "" then
-      local res = connection:query("SELECT CURRENT_SCHEMA AS schema")
-      if res and res[1] and res[1].schema and res[1].schema ~= null then
-        config.schema = res[1].schema
-      else
-        config.schema = "public"
-      end
+  if config.schema == "" then
+    local res = connection:query("SELECT CURRENT_SCHEMA AS schema")
+    if res and res[1] and res[1].schema and res[1].schema ~= null then
+      config.schema = res[1].schema
+    else
+      config.schema = "public"
     end
+  end
 
+  if connection.sock:getreusedtimes() == 0 then
     ok, err = connection:query(concat {
       "SET SCHEMA ",    connection:escape_literal(config.schema), ";\n",
       "SET TIME ZONE ", connection:escape_literal("UTC"), ";",
@@ -298,7 +290,7 @@ function _mt:init()
   local res, err = self:query("SHOW server_version_num;")
   local ver = tonumber(res and res[1] and res[1].server_version_num)
   if not ver then
-    return nil, "failed to retrieve PostgreSQL server_version_num: " .. err
+    return nil, "failed to retrieve PostgreSQL server_version_num: " .. (err or "")
   end
 
   local major = floor(ver / 10000)
@@ -532,6 +524,7 @@ function _mt:query(sql, operation)
     operation = "write"
   end
 
+  local conn, is_new_conn
   local res, err, partial, num_queries
 
   local ok
@@ -540,24 +533,37 @@ function _mt:query(sql, operation)
     return nil, "error acquiring query semaphore: " .. err
   end
 
-  local conn = self:get_stored_connection(operation)
-  if conn then
-    res, err, partial, num_queries = conn:query(sql)
-
-  else
-    local connection
+  conn = self:get_stored_connection(operation)
+  if not conn then
     local config = operation == "write" and self.config or self.config_ro
 
-    connection, err = connect(config)
-    if not connection then
+    conn, err = connect(config)
+    if not conn then
       self:release_query_semaphore_resource(operation)
       return nil, err
     end
+    is_new_conn = true
+  end
 
-    res, err, partial, num_queries = connection:query(sql)
+  res, err, partial, num_queries = conn:query(sql)
 
+  -- if err is string then either it is a SQL error
+  -- or it is a socket error, here we abort connections
+  -- that encounter errors instead of reusing them, for
+  -- safety reason
+  if err and type(err) == "string" then
+    ngx.log(ngx.DEBUG, "SQL query throw error: ", err, ", close connection")
+    local _, err = conn:disconnect()
+    if err then
+      -- We're at the end of the query - just logging if
+      -- we cannot cleanup the connection
+      ngx.log(ngx.ERR, "failed to disconnect: ", err)
+    end
+    self:store_connection(nil, operation)
+
+  elseif is_new_conn then
     local keepalive_timeout = self:get_keepalive_timeout(operation)
-    setkeepalive(connection, keepalive_timeout)
+    setkeepalive(conn, keepalive_timeout)
   end
 
   self:release_query_semaphore_resource(operation)
@@ -769,7 +775,7 @@ function _mt:schema_migrations()
 end
 
 
-function _mt:schema_bootstrap(kong_config, default_locks_ttl)
+function _mt:schema_bootstrap(default_locks_ttl)
   local conn = self:get_stored_connection()
   if not conn then
     error("no connection")
@@ -855,7 +861,7 @@ function _mt:run_up_migration(name, up_sql)
     error("no connection")
   end
 
-  local sql = stringx.strip(up_sql)
+  local sql = strip(up_sql)
   if sub(sql, -1) ~= ";" then
     sql = sql .. ";"
   end

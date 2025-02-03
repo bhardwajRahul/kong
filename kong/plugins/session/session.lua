@@ -6,14 +6,23 @@ local kong = kong
 local ipairs = ipairs
 
 
+-- In theory bodies are allowed in most HTTP methods, but in
+-- practice it is reasonable to limit reading bodies only to
+-- below list of HTTP methods.
+local READ_BODY_METHODS = {
+  DELETE = true, -- this is a stretch, but lets allow it
+  PATCH = true,
+  POST = true,
+  PUT = true,
+}
+
+
 local _M = {}
 
 
 --- Open a session based on plugin config
 -- @returns resty.session session object
 function _M.open_session(conf)
-  kong.log.inspect(conf.response_headers)
-
   return resty_session.open({
     secret                    = conf.secret,
     audience                  = conf.audience,
@@ -34,6 +43,8 @@ function _M.open_session(conf)
     remember_absolute_timeout = conf.remember_absolute_timeout,
     response_headers          = conf.response_headers,
     request_headers           = conf.request_headers,
+    hash_subject              = conf.hash_subject,
+    store_metadata            = conf.store_metadata,
   })
 end
 
@@ -102,15 +113,17 @@ function _M.logout(conf)
     end
   end
 
-  local logout_post_arg = conf.logout_post_arg
-  if logout_post_arg then
-    local post_args = kong.request.get_body()
-    if post_args and post_args[logout_post_arg] then
-      kong.log.debug("logout by post argument")
-      return true
+  -- If the request method is POST or DELETE, then check the body for the logout post args
+  if conf.read_body_for_logout then
+    local logout_post_arg = conf.logout_post_arg
+    if logout_post_arg and READ_BODY_METHODS[request_method] then
+      local post_args = kong.request.get_body()
+      if post_args and post_args[logout_post_arg] then
+        kong.log.debug("logout by post argument")
+        return true
+      end
     end
   end
-
   return false
 end
 

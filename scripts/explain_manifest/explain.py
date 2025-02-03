@@ -54,16 +54,42 @@ class FileInfo():
         self.path = path
         self.relpath = relpath
 
+        self._lazy_evaluate_cache = {}
+        self._lazy_evaluate_attrs = {}
+
         if Path(path).is_symlink():
             self.link = os.readlink(path)
         elif Path(path).is_dir():
             self.directory = True
 
+        # use lstat to get the mode, uid, gid of the symlink itself
+        self.mode = os.lstat(path).st_mode
+        # unix style mode
+        self.file_mode = '0' + oct(self.mode & 0o777)[2:]
+        self.uid = os.lstat(path).st_uid
+        self.gid = os.lstat(path).st_gid
+
         if not Path(path).is_symlink():
-            self.mode = os.stat(path).st_mode
-            self.uid = os.stat(path).st_uid
-            self.gid = os.stat(path).st_gid
             self.size = os.stat(path).st_size
+
+        self._lazy_evaluate_attrs.update({
+            "binary_content": lambda: open(path, "rb").read(),
+            "text_content": lambda: open(path, "rb").read().decode('utf-8'),
+        })
+
+    def __getattr__(self, name):
+        if name in self._lazy_evaluate_cache:
+            return self._lazy_evaluate_cache[name]
+
+        ret = None
+        if name in self._lazy_evaluate_attrs:
+            ret = self._lazy_evaluate_attrs[name]()
+
+        if ret:
+            self._lazy_evaluate_cache[name] = ret
+            return ret
+
+        return self.__getattribute__(name)
 
     def explain(self, opts: ExplainOpts):
         lines = [("Path", self.relpath)]
@@ -95,8 +121,6 @@ class ElfFileInfo(FileInfo):
         self.get_imported_symbols = None
         self.version_requirement = {}
 
-        self._lazy_evaluate_cache = {}
-
         if not os.path.isfile(path):
             return
 
@@ -107,16 +131,17 @@ class ElfFileInfo(FileInfo):
         binary = lief.parse(path)
         if not binary:  # not an ELF file, malformed, etc
             return
-    
-        self.arch = binary.header.machine_type.name
+
+        # lief._lief.ELF.ARCH.X86_64
+        self.arch = str(binary.header.machine_type).split(".")[-1]
 
         for d in binary.dynamic_entries:
-            if d.tag == lief.ELF.DYNAMIC_TAGS.NEEDED:
+            if d.tag == lief._lief.ELF.DynamicEntry.TAG.NEEDED:
                 self.needed_libraries.append(d.name)
-            elif d.tag == lief.ELF.DYNAMIC_TAGS.RPATH:
-                self.rpath = d.name
-            elif d.tag == lief.ELF.DYNAMIC_TAGS.RUNPATH:
-                self.runpath = d.name
+            elif d.tag == lief._lief.ELF.DynamicEntry.TAG.RPATH:
+                self.rpath = d.rpath
+            elif d.tag == lief._lief.ELF.DynamicEntry.TAG.RUNPATH:
+                self.runpath = d.runpath
 
         # create closures and lazily evaluated
         self.get_exported_symbols = lambda: sorted(
@@ -131,23 +156,11 @@ class ElfFileInfo(FileInfo):
                 a.name) for a in f.get_auxiliary_symbols()]
             self.version_requirement[f.name].sort()
 
-    def __getattr__(self, name):
-        if name in self._lazy_evaluate_cache:
-            return self._lazy_evaluate_cache[name]
-
-        ret = None
-        if name == "exported_symbols" and self.get_exported_symbols:
-            ret = self.get_exported_symbols()
-        elif name == "imported_symbols" and self.get_imported_symbols:
-            ret = self.get_imported_symbols()
-        elif name == "functions" and self.get_functions:
-            ret = self.get_functions()
-
-        if ret:
-            self._lazy_evaluate_cache[name] = ret
-            return ret
-
-        return self.__getattribute__(name)
+        self._lazy_evaluate_attrs.update({
+            "exported_symbols": self.get_exported_symbols,
+            "imported_symbols": self.get_imported_symbols,
+            "functions": self.get_functions,
+        })
 
     def explain(self, opts: ExplainOpts):
         pline = super().explain(opts)
@@ -170,7 +183,7 @@ class ElfFileInfo(FileInfo):
             req = []
             for k in sorted(self.version_requirement):
                 req.append("%s: %s" %
-                           (k, ", ".join(self.version_requirement[k])))
+                           (k, ", ".join(map(str, self.version_requirement[k]))))
             lines.append(("Version Requirement", req))
 
         return pline + lines
@@ -191,7 +204,7 @@ class NginxInfo(ElfFileInfo):
         binary = lief.parse(path)
 
         for s in binary.strings:
-            if re.match("\s*--prefix=/", s):
+            if re.match(r"\s*--prefix=/", s):
                 self.nginx_compile_flags = s
                 for m in re.findall("add(?:-dynamic)?-module=(.*?) ", s):
                     if m.startswith("../"):  # skip bundled modules
@@ -203,7 +216,7 @@ class NginxInfo(ElfFileInfo):
                     else:
                         self.nginx_modules.append(os.path.join(pdir, mname))
                 self.nginx_modules = sorted(self.nginx_modules)
-            elif m := re.match("^built with (.+) \(running with", s):
+            elif m := re.match(r"^built with (.+) \(running with", s):
                 self.nginx_compiled_openssl = m.group(1).strip()
 
         # Fetch DWARF infos

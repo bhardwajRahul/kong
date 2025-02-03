@@ -56,8 +56,6 @@ for _, strategy in helpers.each_strategy() do
       -- insert single fixture Service
       service_fixture = bp.services:insert()
 
-      local db_update_propagation = strategy == "cassandra" and 0.1 or 0
-
       assert(helpers.start_kong {
         log_level             = "debug",
         prefix                = "servroot1",
@@ -65,7 +63,6 @@ for _, strategy in helpers.each_strategy() do
         proxy_listen          = "0.0.0.0:8000, 0.0.0.0:8443 ssl",
         admin_listen          = "0.0.0.0:8001",
         db_update_frequency   = POLL_INTERVAL,
-        db_update_propagation = db_update_propagation,
         nginx_conf            = "spec/fixtures/custom_nginx.template",
       })
 
@@ -76,7 +73,6 @@ for _, strategy in helpers.each_strategy() do
         proxy_listen          = "0.0.0.0:9000, 0.0.0.0:9443 ssl",
         admin_listen          = "0.0.0.0:9001",
         db_update_frequency   = POLL_INTERVAL,
-        db_update_propagation = db_update_propagation,
       })
 
       admin_client_1 = helpers.http_client("127.0.0.1", 8001)
@@ -86,8 +82,8 @@ for _, strategy in helpers.each_strategy() do
     end)
 
     lazy_teardown(function()
-      helpers.stop_kong("servroot1", true)
-      helpers.stop_kong("servroot2", true)
+      helpers.stop_kong("servroot1")
+      helpers.stop_kong("servroot2")
     end)
 
     before_each(function()
@@ -118,7 +114,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "example.com",
+            host = "example.test",
           }
         })
         assert.res_status(404, res_1)
@@ -127,7 +123,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "example.com",
+            host = "example.test",
           }
         })
         assert.res_status(404, res)
@@ -141,7 +137,7 @@ for _, strategy in helpers.each_strategy() do
           path    = "/routes",
           body    = {
             protocols = { "http" },
-            hosts     = { "example.com" },
+            hosts     = { "example.test" },
             service   = {
               id = service_fixture.id,
             }
@@ -166,7 +162,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "example.com",
+            host = "example.test",
           }
         })
         assert.res_status(200, res)
@@ -175,7 +171,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "example.com",
+            host = "example.test",
           }
         }, 200)
       end)
@@ -186,7 +182,7 @@ for _, strategy in helpers.each_strategy() do
           path    = "/routes/" .. route_fixture_id,
           body    = {
             methods = cjson.null,
-            hosts   = { "updated-example.com" },
+            hosts   = { "updated-example.test" },
             paths   = cjson.null,
           },
           headers = {
@@ -209,7 +205,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/",
           headers = {
-            host = "updated-example.com",
+            host = "updated-example.test",
           }
         })
         assert.res_status(200, res_1)
@@ -220,7 +216,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/",
           headers = {
-            host = "example.com",
+            host = "example.test",
           }
         })
         assert.res_status(404, res_1_old)
@@ -231,7 +227,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/",
           headers = {
-            host = "updated-example.com",
+            host = "updated-example.test",
           }
         }, 200)
 
@@ -241,7 +237,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/",
           headers = {
-            host = "example.com",
+            host = "example.test",
           }
         }, 404)
       end)
@@ -265,7 +261,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/",
           headers = {
-            host = "updated-example.com",
+            host = "updated-example.test",
           }
         })
         assert.res_status(404, res_1)
@@ -274,7 +270,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/",
           headers = {
-            host = "updated-example.com",
+            host = "updated-example.test",
           }
         }, 404)
       end)
@@ -293,7 +289,7 @@ for _, strategy in helpers.each_strategy() do
           path    = "/routes",
           body    = {
             protocols = { "http" },
-            hosts     = { "service.com" },
+            hosts     = { "service.test" },
             service   = {
               id = service_fixture.id,
             }
@@ -315,7 +311,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "service.com",
+            host = "service.test",
           }
         })
         assert.res_status(200, res_1)
@@ -324,7 +320,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "service.com",
+            host = "service.test",
           }
         }, 200)
 
@@ -354,7 +350,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/",
           headers = {
-            host = "service.com",
+            host = "service.test",
           }
         })
         assert.res_status(418, res_1)
@@ -363,7 +359,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/",
           headers = {
-            host = "service.com",
+            host = "service.test",
           }
         }, 418)
       end)
@@ -391,7 +387,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/",
           headers = {
-            host = "service.com",
+            host = "service.test",
           }
         })
         assert.res_status(404, res_1)
@@ -400,7 +396,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/",
           headers = {
-            host = "service.com",
+            host = "service.test",
           }
         }, 404)
       end)
@@ -413,7 +409,7 @@ for _, strategy in helpers.each_strategy() do
     describe("ssl_certificates / snis", function()
 
       local function get_cert(port, sn)
-        local pl_utils = require "pl.utils"
+        local shell = require "resty.shell"
 
         local cmd = [[
           echo "" | openssl s_client \
@@ -422,7 +418,7 @@ for _, strategy in helpers.each_strategy() do
           -servername %s \
         ]]
 
-        local _, _, stderr = pl_utils.executeex(string.format(cmd, port, sn))
+        local _, _, stderr = shell.run(string.format(cmd, port, sn), nil, 0)
 
         return stderr
       end
@@ -475,6 +471,12 @@ for _, strategy in helpers.each_strategy() do
       end)
 
       it("on certificate delete+re-creation", function()
+        -- populate cache
+        get_cert(8443, "ssl-example.com")
+        get_cert(8443, "new-ssl-example.com")
+        get_cert(9443, "ssl-example.com")
+        get_cert(9443, "new-ssl-example.com")
+
         -- TODO: PATCH update are currently not possible
         -- with the admin API because snis have their name as their
         -- primary key and the DAO has limited support for such updates.
@@ -518,6 +520,10 @@ for _, strategy in helpers.each_strategy() do
       end)
 
       it("on certificate update", function()
+        -- populate cache
+        get_cert(8443, "new-ssl-example.com")
+        get_cert(9443, "new-ssl-example.com")
+
         -- update our certificate *without* updating the
         -- attached sni
 
@@ -552,6 +558,12 @@ for _, strategy in helpers.each_strategy() do
       end)
 
       it("on sni update via id", function()
+        -- populate cache
+        get_cert(8443, "new-ssl-example.com")
+        get_cert(8443, "updated-sn-via-id.com")
+        get_cert(9443, "new-ssl-example.com")
+        get_cert(9443, "updated-sn-via-id.com")
+
         local admin_res = admin_client_1:get("/snis")
         local body = assert.res_status(200, admin_res)
         local sni = assert(cjson.decode(body).data[1])
@@ -583,6 +595,12 @@ for _, strategy in helpers.each_strategy() do
       end)
 
       it("on sni update via name", function()
+        -- populate cache
+        get_cert(8443, "updated-sn-via-id.com")
+        get_cert(8443, "updated-sn.com")
+        get_cert(9443, "updated-sn-via-id.com")
+        get_cert(9443, "updated-sn.com")
+
         local admin_res = admin_client_1:patch("/snis/updated-sn-via-id.com", {
           body    = { name = "updated-sn.com" },
           headers = { ["Content-Type"] = "application/json" },
@@ -610,6 +628,10 @@ for _, strategy in helpers.each_strategy() do
       end)
 
       it("on certificate delete", function()
+        -- populate cache
+        get_cert(8443, "updated-sn.com")
+        get_cert(9443, "updated-sn.com")
+
         -- delete our certificate
 
         local admin_res = admin_client_1:delete("/certificates/updated-sn.com")
@@ -634,6 +656,14 @@ for _, strategy in helpers.each_strategy() do
 
       describe("wildcard snis", function()
         it("on create", function()
+          -- populate cache
+          get_cert(8443, "test.wildcard.com")
+          get_cert(8443, "test2.wildcard.com")
+          get_cert(8443, "wildcard.com")
+          get_cert(9443, "test.wildcard.com")
+          get_cert(9443, "test2.wildcard.com")
+          get_cert(9443, "wildcard.com")
+
           local admin_res = admin_client_1:post("/certificates", {
             body   = {
               cert = ssl_fixtures.cert_alt,
@@ -684,6 +714,12 @@ for _, strategy in helpers.each_strategy() do
         end)
 
         it("on certificate update", function()
+          -- populate cache
+          get_cert(8443, "test.wildcard.com")
+          get_cert(8443, "test2.wildcard.com")
+          get_cert(9443, "test.wildcard.com")
+          get_cert(9443, "test2.wildcard.com")
+
           -- update our certificate *without* updating the
           -- attached sni
 
@@ -727,6 +763,14 @@ for _, strategy in helpers.each_strategy() do
         end)
 
         it("on sni update via id", function()
+          -- populate cache
+          get_cert(8443, "test.wildcard.com")
+          get_cert(8443, "test2.wildcard.com")
+          get_cert(8443, "test.wildcard_updated.com")
+          get_cert(9443, "test.wildcard.com")
+          get_cert(9443, "test2.wildcard.com")
+          get_cert(9443, "test.wildcard_updated.com")
+
           local admin_res = admin_client_1:get("/snis/%2A.wildcard.com")
           local body = assert.res_status(200, admin_res)
           local sni = assert(cjson.decode(body))
@@ -766,6 +810,14 @@ for _, strategy in helpers.each_strategy() do
         end)
 
         it("on sni update via name", function()
+          -- populate cache
+          get_cert(8443, "test.wildcard.org")
+          get_cert(8443, "test2.wildcard.org")
+          get_cert(8443, "test.wildcard_updated.com")
+          get_cert(9443, "test.wildcard.org")
+          get_cert(9443, "test2.wildcard.org")
+          get_cert(9443, "test.wildcard_updated.com")
+
           local admin_res = admin_client_1:patch("/snis/%2A.wildcard_updated.com", {
             body    = { name = "*.wildcard.org" },
             headers = { ["Content-Type"] = "application/json" },
@@ -801,6 +853,12 @@ for _, strategy in helpers.each_strategy() do
         end)
 
         it("on certificate delete", function()
+          -- populate cache
+          get_cert(8443, "test.wildcard.org")
+          get_cert(8443, "test2.wildcard.org")
+          get_cert(9443, "test.wildcard.org")
+          get_cert(9443, "test2.wildcard.org")
+
           -- delete our certificate
 
           local admin_res = admin_client_1:delete("/certificates/%2A.wildcard.org")
@@ -861,7 +919,7 @@ for _, strategy in helpers.each_strategy() do
           path    = "/routes",
           body    = {
             protocols = { "http" },
-            hosts     = { "dummy.com" },
+            hosts     = { "dummy.test" },
             service   = {
               id = service_fixture.id,
             }
@@ -887,7 +945,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         })
         assert.res_status(200, res_1)
@@ -898,7 +956,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         }, 200, { ["Dummy-Plugin"] = ngx.null })
 
@@ -906,7 +964,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         }, 200, { ["Dummy-Plugin"] = ngx.null })
 
@@ -939,7 +997,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         })
         assert.res_status(200, res_1)
@@ -949,7 +1007,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         }, 200, { ["Dummy-Plugin"] = "1" })
       end)
@@ -981,7 +1039,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         })
         assert.res_status(200, res_1)
@@ -991,7 +1049,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         }, 200, { ["Dummy-Plugin"] = "2" })
       end)
@@ -1015,7 +1073,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         })
         assert.res_status(200, res_1)
@@ -1025,7 +1083,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         }, 200, { ["Dummy-Plugin"] = ngx.null })
       end)
@@ -1043,7 +1101,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         })
         assert.res_status(200, res_1)
@@ -1054,7 +1112,7 @@ for _, strategy in helpers.each_strategy() do
             method  = "GET",
             path    = "/status/200",
             headers = {
-              host = "dummy.com",
+              host = "dummy.test",
             }
           })
           assert.res_status(200, res)
@@ -1087,7 +1145,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         })
         assert.res_status(200, res_1)
@@ -1097,7 +1155,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         }, 200, { ["Dummy-Plugin"] = "1" })
       end)
@@ -1107,7 +1165,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         })
         assert.res_status(200, res_1)
@@ -1131,7 +1189,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         })
         assert.res_status(200, res_1)
@@ -1141,7 +1199,7 @@ for _, strategy in helpers.each_strategy() do
           method  = "GET",
           path    = "/status/200",
           headers = {
-            host = "dummy.com",
+            host = "dummy.test",
           }
         }, 200, { ["Dummy-Plugin"] = ngx.null })
       end)
@@ -1172,8 +1230,6 @@ for _, strategy in helpers.each_strategy() do
       -- insert single fixture Service
       service_fixture = bp.services:insert()
 
-      local db_update_propagation = strategy == "cassandra" and 0.1 or 0
-
       assert(helpers.start_kong {
         log_level             = "debug",
         prefix                = "servroot1",
@@ -1181,7 +1237,6 @@ for _, strategy in helpers.each_strategy() do
         proxy_listen          = "0.0.0.0:8000, 0.0.0.0:8443 ssl",
         admin_listen          = "0.0.0.0:8001",
         db_update_frequency   = POLL_INTERVAL,
-        db_update_propagation = db_update_propagation,
         nginx_conf            = "spec/fixtures/custom_nginx.template",
         declarative_config    = "ignore-me.yml",
       })
@@ -1193,7 +1248,6 @@ for _, strategy in helpers.each_strategy() do
         proxy_listen          = "0.0.0.0:9000, 0.0.0.0:9443 ssl",
         admin_listen          = "0.0.0.0:9001",
         db_update_frequency   = POLL_INTERVAL,
-        db_update_propagation = db_update_propagation,
         declarative_config    = "ignore-me.yml",
       })
 
@@ -1204,8 +1258,8 @@ for _, strategy in helpers.each_strategy() do
     end)
 
     lazy_teardown(function()
-      helpers.stop_kong("servroot1", true)
-      helpers.stop_kong("servroot2", true)
+      helpers.stop_kong("servroot1")
+      helpers.stop_kong("servroot2")
     end)
 
     before_each(function()
@@ -1322,8 +1376,6 @@ for _, strategy in helpers.each_strategy() do
         service = { id = service.id },
       }
 
-      local db_update_propagation = strategy == "cassandra" and 0.1 or 0
-
       assert(helpers.start_kong {
         log_level             = "debug",
         prefix                = "servroot1",
@@ -1332,7 +1384,6 @@ for _, strategy in helpers.each_strategy() do
         proxy_listen          = "0.0.0.0:8000, 0.0.0.0:8443 ssl",
         admin_listen          = "0.0.0.0:8001",
         db_update_frequency   = POLL_INTERVAL,
-        db_update_propagation = db_update_propagation,
         nginx_conf            = "spec/fixtures/custom_nginx.template",
       })
 
@@ -1344,13 +1395,12 @@ for _, strategy in helpers.each_strategy() do
         proxy_listen          = "0.0.0.0:9000, 0.0.0.0:9443 ssl",
         admin_listen          = "off",
         db_update_frequency   = POLL_INTERVAL,
-        db_update_propagation = db_update_propagation,
       })
     end)
 
     lazy_teardown(function()
-      helpers.stop_kong("servroot1", true)
-      helpers.stop_kong("servroot2", true)
+      helpers.stop_kong("servroot1")
+      helpers.stop_kong("servroot2")
     end)
 
     before_each(function()

@@ -4,9 +4,12 @@ local helpers = require "spec.helpers"
 local cp_status_port = helpers.get_available_port()
 local dp_status_port = 8100
 
+for _, v in ipairs({ {"off", "off"}, {"on", "off"}, {"on", "on"}, }) do
+  local rpc, rpc_sync = v[1], v[2]
+
 for _, strategy in helpers.each_strategy() do
 
-  describe("Hybrid Mode - status ready #" .. strategy, function()
+  describe("Hybrid Mode - status ready #" .. strategy .. " rpc_sync=" .. rpc_sync, function()
 
     helpers.get_db_utils(strategy, {})
 
@@ -19,8 +22,10 @@ for _, strategy in helpers.each_strategy() do
         cluster_cert_key = "spec/fixtures/kong_clustering.key",
         cluster_control_plane = "127.0.0.1:9005",
         proxy_listen = "127.0.0.1:9002",
-        nginx_worker_processes = 8,
+        nginx_main_worker_processes = 8,
         status_listen = "127.0.0.1:" .. dp_status_port,
+        cluster_rpc = rpc,
+        cluster_rpc_sync = rpc_sync,
       })
     end
 
@@ -34,6 +39,8 @@ for _, strategy in helpers.each_strategy() do
         cluster_listen = "127.0.0.1:9005",
         nginx_conf = "spec/fixtures/custom_nginx.template",
         status_listen = "127.0.0.1:" .. cp_status_port,
+        cluster_rpc = rpc,
+        cluster_rpc_sync = rpc_sync,
       })
     end
 
@@ -67,12 +74,11 @@ for _, strategy in helpers.each_strategy() do
     end)
 
     describe("dp status ready endpoint for no config", function()
-
       lazy_setup(function()
-        assert(start_kong_dp())
         assert(start_kong_cp())
+        assert(start_kong_dp())
       end)
-  
+
       lazy_teardown(function()
           assert(helpers.stop_kong("serve_cp"))
           assert(helpers.stop_kong("serve_dp"))
@@ -98,7 +104,6 @@ for _, strategy in helpers.each_strategy() do
       end)
 
       -- now dp receive config from cp, so dp should be ready
-
       it("should return 200 on data plane after configuring", function()
         helpers.wait_until(function()
           local http_client = helpers.http_client('127.0.0.1', dp_status_port)
@@ -151,9 +156,8 @@ for _, strategy in helpers.each_strategy() do
             return true
           end
         end, 10)
-
       end)
     end)
-
   end)
-end
+end -- for _, strategy
+end -- for rpc_sync
