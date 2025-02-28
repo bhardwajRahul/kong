@@ -1,17 +1,16 @@
 local constants     = require "kong.constants"
-local meta          = require "kong.meta"
 local http          = require "resty.http"
 local kong_meta     = require "kong.meta"
 
 
 local kong          = kong
 local fmt           = string.format
-local sub           = string.sub
-local find          = string.find
 local byte          = string.byte
 local match         = string.match
 local var           = ngx.var
-local server_header = meta._SERVER_TOKENS
+
+local server_tokens = kong_meta._SERVER_TOKENS
+local VIA_HEADER    = constants.HEADERS.VIA
 
 
 local SLASH = byte("/")
@@ -26,10 +25,6 @@ local azure = {
 
 function azure:access(conf)
   local path do
-    -- strip any query args
-    local upstream_uri = var.upstream_uri or var.request_uri
-    local s = find(upstream_uri, "?", 1, true)
-    upstream_uri = s and sub(upstream_uri, 1, s - 1) or upstream_uri
 
     -- strip pre-/postfix slashes
     path = match(conf.routeprefix or "", STRIP_SLASHES_PATTERN)
@@ -39,24 +34,11 @@ function azure:access(conf)
       path = "/" .. path
     end
 
-    path = path .. "/" .. func
-
-    -- concatenate path with upstream uri
-    local upstream_uri_first_byte = byte(upstream_uri, 1)
-    local path_last_byte = byte(path, -1)
-    if path_last_byte == SLASH then
-      if upstream_uri_first_byte == SLASH then
-        path = path .. sub(upstream_uri, 2, -1)
-      else
-        path = path .. upstream_uri
-      end
-
+    local functionname_first_byte = byte(func, 1)
+    if functionname_first_byte == SLASH then
+      path = path .. func
     else
-      if upstream_uri_first_byte == SLASH then
-        path = path .. upstream_uri
-      elseif upstream_uri ~= "" then
-        path = path .. "/" .. upstream_uri
-      end
+      path = path .. "/" .. func
     end
   end
 
@@ -96,9 +78,11 @@ function azure:access(conf)
     response_headers["Transfer-Encoding"] = nil
   end
 
-  if kong.configuration.enabled_headers[constants.HEADERS.VIA] then
-    response_headers[constants.HEADERS.VIA] = server_header
-  end
+  if kong.configuration.enabled_headers[VIA_HEADER] then
+    local outbound_via = (var.http2 and "2 " or "1.1 ") .. server_tokens
+    response_headers[VIA_HEADER] = response_headers[VIA_HEADER] and response_headers[VIA_HEADER] .. ", " .. outbound_via
+                                   or outbound_via
+ end
 
   return kong.response.exit(res.status, res.body, response_headers)
 end

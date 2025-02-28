@@ -6,7 +6,7 @@ local cjson = require "cjson"
 local pkey = require("resty.openssl.pkey")
 local x509 = require("resty.openssl.x509")
 
-local tablex = require "pl.tablex"
+local cycle_aware_deep_copy = require("kong.tools.table").cycle_aware_deep_copy
 
 local client
 
@@ -110,7 +110,7 @@ for _, strategy in ipairs(strategies) do
     describe("create with preconfigured account_key with key_set", function()
       lazy_setup(function()
         account_key = {key_id = KEY_ID, key_set = KEY_SET_NAME}
-        config = tablex.deepcopy(proper_config)
+        config = cycle_aware_deep_copy(proper_config)
         config.account_key = account_key
         c = client.new(config)
 
@@ -167,7 +167,7 @@ for _, strategy in ipairs(strategies) do
     describe("create with preconfigured account_key without key_set", function()
       lazy_setup(function()
         account_key = {key_id = KEY_ID}
-        config = tablex.deepcopy(proper_config)
+        config = cycle_aware_deep_copy(proper_config)
         config.account_key = account_key
         c = client.new(config)
 
@@ -208,7 +208,7 @@ for _, strategy in ipairs(strategies) do
       local account_keys = {}
 
       lazy_setup(function()
-        config = tablex.deepcopy(proper_config)
+        config = cycle_aware_deep_copy(proper_config)
         c = client.new(config)
 
         account_keys[1] = util.create_pkey()
@@ -259,7 +259,7 @@ for _, strategy in helpers.each_strategy() do
   describe("Plugin: acme (client.save) [#" .. strategy .. "]", function()
     local bp, db
     local cert, sni
-    local host = "test1.com"
+    local host = "test1.test"
 
     lazy_setup(function()
       bp, db = helpers.get_db_utils(strategy, {
@@ -285,7 +285,7 @@ for _, strategy in helpers.each_strategy() do
     describe("creates new cert", function()
       local key, crt = new_cert_key_pair()
       local new_sni, new_cert, err
-      local new_host = "test2.com"
+      local new_host = "test2.test"
 
       it("returns no error", function()
         err = client._save_dao(new_host, key, crt)
@@ -299,7 +299,7 @@ for _, strategy in helpers.each_strategy() do
       end)
 
       it("create new certificate", function()
-        new_cert, err = db.certificates:select({ id = new_sni.certificate.id })
+        new_cert, err = db.certificates:select(new_sni.certificate)
         assert.is_nil(err)
         assert.same(new_cert.key, key)
         assert.same(new_cert.cert, crt)
@@ -324,14 +324,14 @@ for _, strategy in helpers.each_strategy() do
       end)
 
       it("creates new certificate", function()
-        new_cert, err = db.certificates:select({ id = new_sni.certificate.id })
+        new_cert, err = db.certificates:select(new_sni.certificate)
         assert.is_nil(err)
         assert.same(new_cert.key, key)
         assert.same(new_cert.cert, crt)
       end)
 
       it("deletes old certificate", function()
-        new_cert, err = db.certificates:select({ id = cert.id })
+        new_cert, err = db.certificates:select(cert)
         assert.is_nil(err)
         assert.is_nil(new_cert)
       end)
@@ -343,8 +343,8 @@ for _, strategy in ipairs({"off"}) do
   describe("Plugin: acme (client.renew) [#" .. strategy .. "]", function()
     local bp
     local cert
-    local host = "test1.com"
-    local host_not_expired = "test2.com"
+    local host = "test1.test"
+    local host_not_expired = "test2.test"
     -- make it due for renewal
     local key, crt = new_cert_key_pair(ngx.time() - 23333)
     -- make it not due for renewal
@@ -451,6 +451,18 @@ for _, strategy in ipairs({"off"}) do
         local renew, err = client._check_expire(certkey.cert, 30 * 86400)
         assert.is_nil(err)
         assert.is_falsy(renew)
+      end)
+
+      it("calling handler.renew with a false argument should be successful", function()
+        local handler = require("kong.plugins.acme.handler")
+        handler:configure({{domains = {"example.com"}}})
+
+        local original = client.renew_certificate
+        client.renew_certificate = function (config)
+          print("mock renew_certificate")
+        end
+        handler.renew(false)
+        client.renew_certificate = original
       end)
     end)
 

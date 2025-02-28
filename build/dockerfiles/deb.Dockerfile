@@ -1,5 +1,5 @@
-ARG KONG_BASE_IMAGE=debian:bullseye-slim
-FROM $KONG_BASE_IMAGE
+ARG KONG_BASE_IMAGE=debian:bookworm-slim
+FROM --platform=$TARGETPLATFORM $KONG_BASE_IMAGE
 
 LABEL maintainer="Kong Docker Maintainers <docker@konghq.com> (@team-gateway-bot)"
 
@@ -14,13 +14,15 @@ ARG EE_PORTS
 ARG TARGETARCH
 
 ARG KONG_ARTIFACT=kong.${TARGETARCH}.deb
-ARG KONG_ARTIFACT_PATH=
-COPY ${KONG_ARTIFACT_PATH}${KONG_ARTIFACT} /tmp/kong.deb
+ARG KONG_ARTIFACT_PATH
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends /tmp/kong.deb \
+RUN --mount=type=bind,source=${KONG_ARTIFACT_PATH},target=/tmp/pkg \
+    apt-get update \
+    && apt-get -y upgrade \
+    && apt-get -y autoremove \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata \
+    && apt-get install -y --no-install-recommends /tmp/pkg/${KONG_ARTIFACT} \
     && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /tmp/kong.deb \
     && chown kong:0 /usr/local/bin/kong \
     && chown -R kong:0 ${KONG_PREFIX} \
     && ln -sf /usr/local/openresty/bin/resty /usr/local/bin/resty \

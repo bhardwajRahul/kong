@@ -1,5 +1,16 @@
 # Table of Contents
 
+- [3.9.0](#390)
+- [3.8.1](#381)
+- [3.8.0](#380)
+- [3.7.1](#371)
+- [3.7.0](#370)
+- [3.6.1](#361)
+- [3.6.0](#360)
+- [3.5.0](#350)
+- [3.4.2](#342)
+- [3.4.1](#341)
+- [3.4.0](#340)
 - [3.3.0](#330)
 - [3.2.0](#320)
 - [3.1.0](#310)
@@ -7,13 +18,2069 @@
 - [3.0.0](#300)
 - [Previous releases](#previous-releases)
 
-
 ## Unreleased
+
+Individual unreleased changelog entries can be located at [changelog/unreleased](changelog/unreleased). They will be assembled into [CHANGELOG.md](CHANGELOG.md) once released.
+
+## 3.9.0
+
+### Kong
+
+#### Deprecations
+##### Core
+
+- `node_id` in configuration has been deprecated.
+ [#13687](https://github.com/Kong/kong/issues/13687)
+
+#### Dependencies
+##### Core
+
+- Bumped lua-kong-nginx-module from 0.11.0 to 0.11.1 to fix an issue where the upstream cert chain wasn't properly set.
+ [#12752](https://github.com/Kong/kong/issues/12752)
+
+- Bumped lua-resty-events to 0.3.1. Optimized the memory usage.
+ [#13097](https://github.com/Kong/kong/issues/13097)
+
+- Bumped lua-resty-lmdb to 1.6.0. Allowing page_size to be 1.
+ [#13908](https://github.com/Kong/kong/issues/13908)
+
+- Bumped lua-resty-lmdb to 1.5.0. Added page_size parameter to allow overriding page size from caller side.
+ [#12786](https://github.com/Kong/kong/issues/12786)
+
+##### Default
+
+- Kong Gateway now supports Ubuntu 24.04 (Noble Numbat) with both open-source and Enterprise packages.
+ [#13626](https://github.com/Kong/kong/issues/13626)
+
+- Bumped rpm dockerfile default base UBI 8 -> 9
+ [#13574](https://github.com/Kong/kong/issues/13574)
+
+- Bumped lua-resty-aws to 1.5.4 to fix a bug inside region prefix generation.
+ [#12846](https://github.com/Kong/kong/issues/12846)
+
+- Bumped lua-resty-ljsonschema to 1.2.0, adding support for `null` as a valid option in `enum` types and properly calculation of utf8 string length instead of byte count
+ [#13783](https://github.com/Kong/kong/issues/13783)
+
+- Bumped `ngx_wasm_module` to `9136e463a6f1d80755ce66c88c3ddecd0eb5e25d`
+ [#12011](https://github.com/Kong/kong/issues/12011)
+
+
+- Bumped `Wasmtime` version to `26.0.0`
+ [#12011](https://github.com/Kong/kong/issues/12011)
+
+- Bumped OpenSSL to 3.2.3 to fix unbounded memory growth with session handling in TLSv1.3 and other CVEs.
+ [#13448](https://github.com/Kong/kong/issues/13448)
+
+ - **Wasm**: Removed the experimental datakit Wasm filter
+ [#14012](https://github.com/Kong/kong/issues/14012)
+
+#### Features
+##### CLI Command
+- Added the `kong drain` CLI command to make the `/status/ready` endpoint return a `503 Service Unavailable` response.
+ [#13838](https://github.com/Kong/kong/issues/13838)
+##### Core
+
+- Added a new feature for Kong Manager that supports multiple domains, enabling dynamic cross-origin access for Admin API requests.
+ [#13664](https://github.com/Kong/kong/issues/13664)
+
+- Added an ADA dependency: WHATWG-compliant and fast URL parser.
+ [#13120](https://github.com/Kong/kong/issues/13120)
+
+- Addded a new LLM driver for interfacing with the Hugging Face inference API.
+The driver supports both serverless and dedicated LLM instances hosted by
+Hugging Face for conversational and text generation tasks.
+ [#13484](https://github.com/Kong/kong/issues/13484)
+
+
+- Increased the priority order of the correlation id to 100001 from 1 so that the plugin can be used
+with other plugins especially custom auth plugins.
+ [#13581](https://github.com/Kong/kong/issues/13581)
+
+- Added a `tls.disable_http2_alpn()` function patch for disabling HTTP/2 ALPN when performing a TLS handshake.
+ [#13709](https://github.com/Kong/kong/issues/13709)
+
+
+- Improved the output of the request debugger:
+  - The resolution of field `total_time` is now in microseconds.
+  - A new field, `total_time_without_upstream`,  shows the latency only introduced by Kong.
+ [#13460](https://github.com/Kong/kong/issues/13460)
+- **proxy-wasm**: Added support for Wasm filters to be configured via the `/plugins` Admin API.
+ [#13843](https://github.com/Kong/kong/issues/13843)
+##### PDK
+
+- Added `kong.service.request.clear_query_arg(name)` to PDK.
+ [#13619](https://github.com/Kong/kong/issues/13619)
+
+- Array and Map type span attributes are now supported by the tracing PDK
+ [#13818](https://github.com/Kong/kong/issues/13818)
+##### Plugin
+- **Prometheus**: Increased the upper limit of `KONG_LATENCY_BUCKETS` to 6000 to enhance latency tracking precision.
+ [#13588](https://github.com/Kong/kong/issues/13588)
+
+- **ai-proxy**: Disabled HTTP/2 ALPN handshake for connections on routes configured with AI-proxy.
+ [#13735](https://github.com/Kong/kong/issues/13735)
+
+- **Redirect**: Added a new plugin to redirect requests to another location.
+ [#13900](https://github.com/Kong/kong/issues/13900)
+
+
+- **Prometheus**: Added support for Proxy-Wasm metrics.
+ [#13681](https://github.com/Kong/kong/issues/13681)
+
+##### Admin API
+- **Admin API**: Added support for official YAML media-type (`application/yaml`) to the `/config` endpoint.
+ [#13713](https://github.com/Kong/kong/issues/13713)
+##### Clustering
+
+- Added a remote procedure call (RPC) framework for Hybrid mode deployments.
+ [#12320](https://github.com/Kong/kong/issues/12320)
+
+#### Fixes
+##### Core
+
+- Fixed an issue where the `ngx.balancer.recreate_request` API did not refresh the body buffer when `ngx.req.set_body_data` is used in the balancer phase.
+ [#13882](https://github.com/Kong/kong/issues/13882)
+
+- Fix to always pass `ngx.ctx` to `log_init_worker_errors` as otherwise it may runtime crash.
+ [#13731](https://github.com/Kong/kong/issues/13731)
+
+- Fixed an issue where the workspace ID was not included in the plugin config in the plugins iterator.
+ [#13377](https://github.com/Kong/kong/issues/13377)
+
+- Fixed an issue where the workspace id was not included in the plugin config in the plugins iterator.
+ [#13872](https://github.com/Kong/kong/issues/13872)
+
+- Fixed a 500 error triggered by unhandled nil fields during schema validation.
+ [#13861](https://github.com/Kong/kong/issues/13861)
+
+- **Vault**: Fixed an issue where array-like configuration fields cannot contain vault reference.
+ [#13953](https://github.com/Kong/kong/issues/13953)
+
+- **Vault**: Fixed an issue where updating a vault entity in a non-default workspace wouldn't take effect.
+ [#13610](https://github.com/Kong/kong/issues/13610)
+
+- **Vault**: Fixed an issue where vault reference in kong configuration cannot be dereferenced when both http and stream subsystems are enabled.
+ [#13953](https://github.com/Kong/kong/issues/13953)
+
+- **proxy-wasm:** Added a check that prevents Kong from starting when the
+database contains invalid Wasm filters.
+ [#13764](https://github.com/Kong/kong/issues/13764)
+
+- Fixed an issue where the `kong.request.enable_buffering` couldn't be used when the downstream used HTTP/2.
+ [#13614](https://github.com/Kong/kong/issues/13614)
+##### PDK
+
+- Lined up the `kong.log.inspect` function to log at `notice` level as documented
+ [#13642](https://github.com/Kong/kong/issues/13642)
+
+- Fix error message for invalid retries variable
+ [#13605](https://github.com/Kong/kong/issues/13605)
+
+##### Plugin
+
+- **ai-proxy**: Fixed a bug where tools (function) calls to Anthropic would return empty results.
+ [#13760](https://github.com/Kong/kong/issues/13760)
+
+
+- **ai-proxy**: Fixed a bug where tools (function) calls to Bedrock would return empty results.
+ [#13760](https://github.com/Kong/kong/issues/13760)
+
+
+- **ai-proxy**: Fixed a bug where Bedrock Guardrail config was ignored.
+ [#13760](https://github.com/Kong/kong/issues/13760)
+
+
+- **ai-proxy**: Fixed a bug where tools (function) calls to Cohere would return empty results.
+ [#13760](https://github.com/Kong/kong/issues/13760)
+
+
+- **ai-proxy**: Fixed a bug where Gemini provider would return an error if content safety failed in AI Proxy.
+ [#13760](https://github.com/Kong/kong/issues/13760)
+
+
+- **ai-proxy**: Fixed a bug where tools (function) calls to Gemini (or via Vertex) would return empty results.
+ [#13760](https://github.com/Kong/kong/issues/13760)
+
+
+- **ai-proxy**: Fixed an issue where AI Transformer plugins always returned a 404 error when using 'Google One' Gemini subscriptions.
+ [#13703](https://github.com/Kong/kong/issues/13703)
+
+
+- **ai-transformers**: Fixed a bug where the correct LLM error message was not propagated to the caller.
+ [#13703](https://github.com/Kong/kong/issues/13703)
+
+- **AI-Proxy**: Fixed an issue where multi-modal requests were blocked on the Azure AI provider.
+ [#13702](https://github.com/Kong/kong/issues/13702)
+
+
+- Fixed an bug that AI semantic cache can't use request provided models
+ [#13627](https://github.com/Kong/kong/issues/13627)
+
+- **AWS-Lambda**: Fixed an issue in proxy integration mode that caused an internal server error when the `multiValueHeaders` was null.
+ [#13533](https://github.com/Kong/kong/issues/13533)
+
+- **jwt**: ensure `rsa_public_key` isn't base64-decoded.
+ [#13717](https://github.com/Kong/kong/issues/13717)
+
+- **key-auth**: Fixed an issue with the order of query arguments, ensuring that arguments retain order when hiding the credentials.
+ [#13619](https://github.com/Kong/kong/issues/13619)
+
+- **rate-limiting**: Fixed a bug where the returned values from `get_redis_connection()` were incorrect.
+ [#13613](https://github.com/Kong/kong/issues/13613)
+
+- **rate-limiting**: Fixed an issue that caused an HTTP 500 error when `hide_client_headers` was set to `true` and the request exceeded the rate limit.
+ [#13722](https://github.com/Kong/kong/issues/13722)
+##### Admin API
+
+- Fix for querying admin API entities with empty tags
+ [#13723](https://github.com/Kong/kong/issues/13723)
+
+- Fixed an issue where nested parameters couldn't be parsed correctly when using `form-urlencoded` requests.
+ [#13668](https://github.com/Kong/kong/issues/13668)
+##### Clustering
+
+- **Clustering**: Adjusted error log levels for control plane connections.
+ [#13863](https://github.com/Kong/kong/issues/13863)
+##### Default
+
+- **Loggly**: Fixed an issue where `/bin/hostname` missing caused an error warning on startup.
+ [#13788](https://github.com/Kong/kong/issues/13788)
+
+### Kong-Manager
+
+#### Fixes
+##### Default
+
+- Kong Manager will now hide the scope change field when creating/editing a scoped plugin from another entity.
+ [#297](https://github.com/Kong/kong-manager/issues/297)
+
+
+- Improved the user experience in Kong Manager by fixing various UI-related issues.
+ [#277](https://github.com/Kong/kong-manager/issues/277) [#283](https://github.com/Kong/kong-manager/issues/283) [#286](https://github.com/Kong/kong-manager/issues/286) [#287](https://github.com/Kong/kong-manager/issues/287) [#288](https://github.com/Kong/kong-manager/issues/288) [#291](https://github.com/Kong/kong-manager/issues/291) [#293](https://github.com/Kong/kong-manager/issues/293) [#295](https://github.com/Kong/kong-manager/issues/295) [#298](https://github.com/Kong/kong-manager/issues/298) [#302](https://github.com/Kong/kong-manager/issues/302) [#304](https://github.com/Kong/kong-manager/issues/304) [#306](https://github.com/Kong/kong-manager/issues/306) [#309](https://github.com/Kong/kong-manager/issues/309) [#317](https://github.com/Kong/kong-manager/issues/317) [#319](https://github.com/Kong/kong-manager/issues/319) [#322](https://github.com/Kong/kong-manager/issues/322) [#325](https://github.com/Kong/kong-manager/issues/325) [#329](https://github.com/Kong/kong-manager/issues/329) [#330](https://github.com/Kong/kong-manager/issues/330)
+
+
+- Unified the redirection logic in Kong Manager upon entity operations.
+ [#289](https://github.com/Kong/kong-manager/issues/289)
+
+
+## 3.8.1
+
+## Kong
+
+#### Dependencies
+##### Core
+
+- Bumped lua-kong-nginx-module from 0.11.0 to 0.11.1 to fix an issue where the upstream cert chain wasn't properly set.
+ [#12752](https://github.com/Kong/kong/issues/12752)
+##### Default
+
+- Bumped lua-resty-aws to 1.5.4, to fix a bug inside region prefix generating
+ [#12846](https://github.com/Kong/kong/issues/12846)
+
+#### Features
+##### Plugin
+
+- **Prometheus**: Bumped KONG_LATENCY_BUCKETS bucket's maximal capacity to 6000
+ [#13797](https://github.com/Kong/kong/issues/13797)
+
+#### Fixes
+##### Core
+
+- **Vault**: Fixed an issue where updating a vault entity in a non-default workspace will not take effect.
+ [#13670](https://github.com/Kong/kong/issues/13670)
+##### Plugin
+
+- **ai-proxy**: Fixed an issue where AI Transformer plugins always returned a 404 error when using 'Google One' Gemini subscriptions.
+ [#13753](https://github.com/Kong/kong/issues/13753)
+
+
+- **ai-transformers**: Fixed a bug where the correct LLM error message was not propagated to the caller.
+ [#13753](https://github.com/Kong/kong/issues/13753)
+
+
+- Fixed an bug that AI semantic cache can't use request provided models
+ [#13633](https://github.com/Kong/kong/issues/13633)
+
+
+- **Rate-Limiting**: Fixed an issue that caused a 500 error when using the rate-limiting plugin. When the `hide_client_headers` option is set to true and a 429 error is triggered,
+it should return a 429 error code instead of a 500 error code.
+ [#13759](https://github.com/Kong/kong/issues/13759)
+##### Admin API
+
+- Fixed an issue where sending `tags= `(empty parameter) resulted in 500 error. Now, Kong returns a 400 error, as empty explicit tags are not allowed.
+ [#13813](https://github.com/Kong/kong/issues/13813)
+
+## 3.8.0
+
+### Kong
+
+
+#### Performance
+##### Performance
+
+- Fixed an inefficiency issue in the Luajit hashing algorithm
+ [#13240](https://github.com/Kong/kong/issues/13240)
+
+##### Core
+
+- Removed unnecessary DNS client initialization
+ [#13479](https://github.com/Kong/kong/issues/13479)
+
+
+- Improved latency performance when gzipping/gunzipping large data (such as CP/DP config data).
+ [#13338](https://github.com/Kong/kong/issues/13338)
+
+
+
+#### Deprecations
+##### Default
+
+- Debian 10, CentOS 7, and RHEL 7 reached their End of Life (EOL) dates on June 30, 2024. As of version 3.8.0.0 onward, Kong is not building installation packages or Docker images for these operating systems. Kong is no longer providing official support for any Kong version running on these systems.
+ [#13468](https://github.com/Kong/kong/issues/13468)
+
+
+
+
+
+#### Dependencies
+##### Core
+
+- Bumped lua-resty-acme to 0.15.0 to support username/password auth with redis.
+ [#12909](https://github.com/Kong/kong/issues/12909)
+
+
+- Bumped lua-resty-aws to 1.5.3 to fix a bug related to STS regional endpoint.
+ [#12846](https://github.com/Kong/kong/issues/12846)
+
+
+- Bumped lua-resty-healthcheck from 3.0.1 to 3.1.0 to fix an issue that was causing high memory usage
+ [#13038](https://github.com/Kong/kong/issues/13038)
+
+
+- Bumped lua-resty-lmdb to 1.4.3 to get fixes from the upstream (lmdb 0.9.33), which resolved numerous race conditions and fixed a cursor issue.
+ [#12786](https://github.com/Kong/kong/issues/12786)
+
+
+- Bumped lua-resty-openssl to 1.5.1 to fix some issues including a potential use-after-free issue.
+ [#12665](https://github.com/Kong/kong/issues/12665)
+
+
+- Bumped OpenResty to 1.25.3.2 to improve the performance of the LuaJIT hash computation.
+ [#12327](https://github.com/Kong/kong/issues/12327)
+
+
+- Bumped PCRE2 to 10.44 to fix some bugs and tidy-up the release (nothing important)
+ [#12366](https://github.com/Kong/kong/issues/12366)
+
+
+
+
+- Introduced a yieldable JSON library `lua-resty-simdjson`,
+which would improve the latency significantly.
+ [#13421](https://github.com/Kong/kong/issues/13421)
+
+##### Default
+
+- Bumped lua-protobuf 0.5.2
+ [#12834](https://github.com/Kong/kong/issues/12834)
+
+
+- Bumped LuaRocks from 3.11.0 to 3.11.1
+ [#12662](https://github.com/Kong/kong/issues/12662)
+
+
+- Bumped `ngx_wasm_module` to `96b4e27e10c63b07ed40ea88a91c22f23981db35`
+ [#12011](https://github.com/Kong/kong/issues/12011)
+
+
+- Bumped `Wasmtime` version to `23.0.2`
+ [#13567](https://github.com/Kong/kong/pull/13567)
+
+
+
+- Made the RPM package relocatable with the default prefix set to `/`.
+ [#13468](https://github.com/Kong/kong/issues/13468)
+
+
+#### Features
+##### Configuration
+
+- Configure Wasmtime module cache when Wasm is enabled
+  [#12930](https://github.com/Kong/kong/issues/12930)
+
+##### Core
+
+- **prometheus**: Added `ai_requests_total`, `ai_cost_total` and `ai_tokens_total` metrics in the Prometheus plugin to start counting AI usage.
+ [#13148](https://github.com/Kong/kong/issues/13148)
+
+
+- Added a new configuration `concurrency_limit`(integer, default to 1) for Queue to specify the number of delivery timers.
+Note that setting `concurrency_limit` to `-1` means no limit at all, and each HTTP log entry would create an individual timer for sending.
+ [#13332](https://github.com/Kong/kong/issues/13332)
+
+
+- Append gateway info to upstream `Via` header like `1.1 kong/3.8.0`, and optionally to
+response `Via` header if it is present in the `headers` config of "kong.conf", like `2 kong/3.8.0`,
+according to `RFC7230` and `RFC9110`.
+ [#12733](https://github.com/Kong/kong/issues/12733)
+
+
+- Starting from this version, a new DNS client library has been implemented and added into Kong, which is disabled by default. The new DNS client library has the following changes - Introduced global caching for DNS records across workers, significantly reducing the query load on DNS servers. - Introduced observable statistics for the new DNS client, and a new Status API `/status/dns` to retrieve them. - Simplified the logic and make it more standardized
+ [#12305](https://github.com/Kong/kong/issues/12305)
+
+##### PDK
+
+- Added `0` to support unlimited body size. When parameter `max_allowed_file_size` is `0`, `get_raw_body` will return the entire body, but the size of this body will still be limited by Nginx's `client_max_body_size`.
+ [#13431](https://github.com/Kong/kong/issues/13431)
+
+
+- Extend kong.request.get_body and kong.request.get_raw_body to read from buffered file
+ [#13158](https://github.com/Kong/kong/issues/13158)
+
+- Added a new PDK module `kong.telemetry` and function: `kong.telemetry.log`
+to generate log entries to be reported via the OpenTelemetry plugin.
+ [#13329](https://github.com/Kong/kong/issues/13329)
+
+##### Plugin
+
+- **acl:** Added a new config `always_use_authenticated_groups` to support using authenticated groups even when an authenticated consumer already exists.
+ [#13184](https://github.com/Kong/kong/issues/13184)
+
+
+- AI plugins: retrieved latency data and pushed it to logs and metrics.
+ [#13428](https://github.com/Kong/kong/issues/13428)
+
+- Allow AI plugin to read request from buffered file
+ [#13158](https://github.com/Kong/kong/pull/13158)
+
+
+- **AI-proxy-plugin**: Add `allow_override` option to allow overriding the upstream model auth parameter or header from the caller's request.
+ [#13158](https://github.com/Kong/kong/issues/13158)
+
+
+- **AI-proxy-plugin**: Replace the lib and use cycle_aware_deep_copy for the `request_table` object.
+ [#13582](https://github.com/Kong/kong/issues/13582)
+
+
+- Kong AI Gateway (AI Proxy and associated plugin family) now supports
+all AWS Bedrock "Converse API" models.
+ [#12948](https://github.com/Kong/kong/issues/12948)
+
+
+- Kong AI Gateway (AI Proxy and associated plugin family) now supports
+the Google Gemini "chat" (generateContent) interface.
+ [#12948](https://github.com/Kong/kong/issues/12948)
+
+
+- **ai-proxy**: Allowed mistral provider to use mistral.ai managed service by omitting upstream_url
+ [#13481](https://github.com/Kong/kong/issues/13481)
+
+- **ai-proxy**: Added a new response header X-Kong-LLM-Model that displays the name of the language model used in the AI-Proxy plugin.
+ [#13472](https://github.com/Kong/kong/issues/13472)
+
+- **AI-Prompt-Guard**: add `match_all_roles` option to allow match all roles in addition to `user`.
+ [#13183](https://github.com/Kong/kong/issues/13183)
+
+- "**AWS-Lambda**: Added support for a configurable STS endpoint with the new configuration field `aws_sts_endpoint_url`.
+ [#13388](https://github.com/Kong/kong/issues/13388)
+
+
+- **AWS-Lambda**: A new configuration field `empty_arrays_mode` is now added to control whether Kong should send `[]` empty arrays (returned by Lambda function) as `[]` empty arrays or `{}` empty objects in JSON responses.`
+ [#13084](https://github.com/Kong/kong/issues/13084)
+
+
+
+
+- Added support for json_body rename in response-transformer plugin
+ [#13131](https://github.com/Kong/kong/issues/13131)
+
+
+- **OpenTelemetry:** Added support for OpenTelemetry formatted logs.
+ [#13291](https://github.com/Kong/kong/issues/13291)
+
+
+- **standard-webhooks**: Added standard webhooks plugin.
+ [#12757](https://github.com/Kong/kong/issues/12757)
+
+- **Request-Transformer**: Fixed an issue where renamed query parameters, url-encoded body parameters, and json body parameters were not handled properly when target name is the same as the source name in the request.
+ [#13358](https://github.com/Kong/kong/issues/13358)
+
+##### Admin API
+
+- Added support for brackets syntax for map fields configuration via the Admin API
+ [#13313](https://github.com/Kong/kong/issues/13313)
+
+
+#### Fixes
+##### CLI Command
+
+- Fixed an issue where some debug level error logs were not being displayed by the CLI.
+ [#13143](https://github.com/Kong/kong/issues/13143)
+
+##### Configuration
+
+- Re-enabled the Lua DNS resolver from proxy-wasm by default.
+ [#13424](https://github.com/Kong/kong/issues/13424)
+
+##### Core
+
+- Fixed an issue where luarocks-admin was not available in /usr/local/bin.
+ [#13372](https://github.com/Kong/kong/issues/13372)
+
+
+- Fixed an issue where 'read' was not always passed to Postgres read-only database operations.
+ [#13530](https://github.com/Kong/kong/issues/13530)
+
+
+- Deprecated shorthand fields don't take precedence over replacement fields when both are specified.
+ [#13486](https://github.com/Kong/kong/issues/13486)
+
+
+- Fixed an issue where `lua-nginx-module` context was cleared when `ngx.send_header()` triggered `filter_finalize` [openresty/lua-nginx-module#2323](https://github.com/openresty/lua-nginx-module/pull/2323).
+ [#13316](https://github.com/Kong/kong/issues/13316)
+
+
+- Changed the way deprecated shorthand fields are used with new fields.
+If the new field contains null it allows for deprecated field to overwrite it if both are present in the request.
+ [#13592](https://github.com/Kong/kong/issues/13592)
+
+
+- Fixed an issue where unnecessary uninitialized variable error log is reported when 400 bad requests were received.
+ [#13201](https://github.com/Kong/kong/issues/13201)
+
+
+- Fixed an issue where the URI captures are unavailable when the first capture group is absent.
+ [#13024](https://github.com/Kong/kong/issues/13024)
+
+
+- Fixed an issue where the priority field can be set in a traditional mode route
+When 'router_flavor' is configured as 'expressions'.
+ [#13142](https://github.com/Kong/kong/issues/13142)
+
+
+- Fixed an issue where setting `tls_verify` to `false` didn't override the global level `proxy_ssl_verify`.
+ [#13470](https://github.com/Kong/kong/issues/13470)
+
+
+- Fixed an issue where the sni cache isn't invalidated when a sni is updated.
+ [#13165](https://github.com/Kong/kong/issues/13165)
+
+
+- The kong.logrotate configuration file will no longer be overwritten during upgrade.
+When upgrading, set the environment variable `DEBIAN_FRONTEND=noninteractive` on Debian/Ubuntu to avoid any interactive prompts and enable fully automatic upgrades.
+ [#13348](https://github.com/Kong/kong/issues/13348)
+
+
+- Fixed an issue where the Vault secret cache got refreshed during `resurrect_ttl` time and could not be fetched by other workers.
+ [#13561](https://github.com/Kong/kong/issues/13561)
+
+
+- Error logs during Vault secret rotation are now logged at the `notice` level instead of `warn`.
+ [#13540](https://github.com/Kong/kong/issues/13540)
+
+
+- Fix a bug that the `host_header` attribute of upstream entity can not be set correctly in requests to upstream as Host header when retries to upstream happen.
+ [#13135](https://github.com/Kong/kong/issues/13135)
+
+
+- Moved internal Unix sockets to a subdirectory (`sockets`) of the Kong prefix.
+ [#13409](https://github.com/Kong/kong/issues/13409)
+
+
+- Changed the behaviour of shorthand fields that are used to describe deprecated fields. If
+both fields are sent in the request and their values mismatch - the request will be rejected.
+ [#13594](https://github.com/Kong/kong/issues/13594)
+
+
+- Reverted DNS client to original behaviour of ignoring ADDITIONAL SECTION in DNS responses.
+ [#13278](https://github.com/Kong/kong/issues/13278)
+
+
+- Shortened names of internal Unix sockets to avoid exceeding the socket name limit.
+ [#13571](https://github.com/Kong/kong/issues/13571)
+
+##### PDK
+
+- **PDK**: Fixed a bug that log serializer will log `upstream_status` as nil in the requests that contains subrequest
+ [#12953](https://github.com/Kong/kong/issues/12953)
+
+
+- **Vault**: Reference ending with slash when parsed should not return a key.
+ [#13538](https://github.com/Kong/kong/issues/13538)
+
+
+- Fixed an issue that pdk.log.serialize() will throw an error when JSON entity set by serialize_value contains json.null
+ [#13376](https://github.com/Kong/kong/issues/13376)
+
+##### Plugin
+
+- **AI-proxy-plugin**: Fixed a bug where certain Azure models would return partial tokens/words
+when in response-streaming mode.
+ [#13000](https://github.com/Kong/kong/issues/13000)
+
+
+- **AI-Transformer-Plugins**: Fixed a bug where cloud identity authentication
+was not used in `ai-request-transformer` and `ai-response-transformer` plugins.
+ [#13487](https://github.com/Kong/kong/issues/13487)
+
+
+- **AI-proxy-plugin**: Fixed a bug where Cohere and Anthropic providers don't read the `model` parameter properly
+from the caller's request body.
+ [#13000](https://github.com/Kong/kong/issues/13000)
+
+
+- **AI-proxy-plugin**: Fixed a bug where using "OpenAI Function" inference requests would log a
+request error, and then hang until timeout.
+ [#13000](https://github.com/Kong/kong/issues/13000)
+
+
+- **AI-proxy-plugin**: Fixed a bug where AI Proxy would still allow callers to specify their own model,
+ignoring the plugin-configured model name.
+ [#13000](https://github.com/Kong/kong/issues/13000)
+
+
+- **AI-proxy-plugin**: Fixed a bug where AI Proxy would not take precedence of the
+plugin's configured model tuning options, over those in the user's LLM request.
+ [#13000](https://github.com/Kong/kong/issues/13000)
+
+
+- **AI-proxy-plugin**: Fixed a bug where setting OpenAI SDK model parameter "null" caused analytics
+to not be written to the logging plugin(s).
+ [#13000](https://github.com/Kong/kong/issues/13000)
+
+
+- **ACME**: Fixed an issue of DP reporting that deprecated config fields are used when configuration from CP is pushed
+ [#13069](https://github.com/Kong/kong/issues/13069)
+
+
+- **ACME**: Fixed an issue where username and password were not accepted as valid authentication methods.
+ [#13496](https://github.com/Kong/kong/issues/13496)
+
+
+- **AI-Proxy**: Fixed issue when response is gzipped even if client doesn't accept.
+ [#13155](https://github.com/Kong/kong/issues/13155)
+
+- **Prometheus**: Fixed an issue where CP/DP compatibility check was missing for the new configuration field `ai_metrics`.
+ [#13417](https://github.com/Kong/kong/issues/13417)
+
+
+- Fixed certain AI plugins cannot be applied per consumer or per service.
+ [#13209](https://github.com/Kong/kong/issues/13209)
+
+- **AI-Prompt-Guard**: Fixed an issue when `allow_all_conversation_history` is set to false, the first user request is selected instead of the last one.
+ [#13183](https://github.com/Kong/kong/issues/13183)
+
+- **AI-Proxy**: Resolved a bug where the object constructor would set data on the class instead of the instance
+ [#13028](https://github.com/Kong/kong/issues/13028)
+
+- **AWS-Lambda**: Fixed an issue that the plugin does not work with multiValueHeaders defined in proxy integration and legacy empty_arrays_mode.
+ [#12971](https://github.com/Kong/kong/issues/12971)
+
+- **AWS-Lambda**: Fixed an issue that the `version` field is not set in the request payload when `awsgateway_compatible` is enabled.
+ [#13018](https://github.com/Kong/kong/issues/13018)
+
+
+- **correlation-id**: Fixed an issue where the plugin would not work if we explicitly set the `generator` to `null`.
+ [#13439](https://github.com/Kong/kong/issues/13439)
+
+
+- **CORS**: Fixed an issue where the `Access-Control-Allow-Origin` header was not sent when `conf.origins` has multiple entries but includes `*`.
+ [#13334](https://github.com/Kong/kong/issues/13334)
+
+
+- **grpc-gateway**: When there is a JSON decoding error, respond with status 400 and error information in the body instead of status 500.
+ [#12971](https://github.com/Kong/kong/issues/12971)
+
+
+- **HTTP-Log**: Fix an issue where the plugin doesn't include port information in the HTTP host header when sending requests to the log server.
+ [#13116](https://github.com/Kong/kong/issues/13116)
+
+- "**AI Plugins**: Fixed an issue for multi-modal inputs are not properly validated and calculated.
+ [#13445](https://github.com/Kong/kong/issues/13445)
+
+
+- **OpenTelemetry:** Fixed an issue where migration fails when upgrading from below version 3.3 to 3.7.
+ [#13391](https://github.com/Kong/kong/issues/13391)
+
+
+- **OpenTelemetry / Zipkin**: remove redundant deprecation warnings
+ [#13220](https://github.com/Kong/kong/issues/13220)
+
+
+- **Basic-Auth**: Fix an issue of realm field not recognized for older kong versions (before 3.6)
+ [#13042](https://github.com/Kong/kong/issues/13042)
+
+
+- **Key-Auth**: Fix an issue of realm field not recognized for older kong versions (before 3.7)
+ [#13042](https://github.com/Kong/kong/issues/13042)
+
+
+- **Request Size Limiting**: Fixed an issue where the body size doesn't get checked when the request body is buffered to a temporary file.
+ [#13303](https://github.com/Kong/kong/issues/13303)
+
+
+- **Response-RateLimiting**: Fixed an issue of DP reporting that deprecated config fields are used when configuration from CP is pushed
+ [#13069](https://github.com/Kong/kong/issues/13069)
+
+
+- **Rate-Limiting**: Fixed an issue of DP reporting that deprecated config fields are used when configuration from CP is pushed
+ [#13069](https://github.com/Kong/kong/issues/13069)
+
+
+- **OpenTelemetry:** Improved accuracy of sampling decisions.
+ [#13275](https://github.com/Kong/kong/issues/13275)
+
+
+- **hmac-auth**: Add WWW-Authenticate headers to 401 responses.
+ [#11791](https://github.com/Kong/kong/issues/11791)
+
+
+- **Prometheus**: Improved error logging when having inconsistent labels count.
+ [#13020](https://github.com/Kong/kong/issues/13020)
+
+
+- **jwt**: Add WWW-Authenticate headers to 401 responses.
+ [#11792](https://github.com/Kong/kong/issues/11792)
+
+
+- **ldap-auth**: Add WWW-Authenticate headers to all 401 responses.
+ [#11820](https://github.com/Kong/kong/issues/11820)
+
+
+- **OAuth2**: Add WWW-Authenticate headers to all 401 responses and realm option.
+ [#11833](https://github.com/Kong/kong/issues/11833)
+
+
+- **proxy-cache**: Fixed an issue where the Age header was not being updated correctly when serving cached responses.
+ [#13387](https://github.com/Kong/kong/issues/13387)
+
+
+- Fixed an bug that AI semantic cache can't use request provided models
+ [#13633](https://github.com/Kong/kong/issues/13633)
+
+##### Admin API
+
+- Fixed an issue where validation of the certificate schema failed if the `snis` field was present in the request body.
+ [#13357](https://github.com/Kong/kong/issues/13357)
+
+##### Clustering
+
+- Fixed an issue where hybrid mode not working if the forward proxy password contains special character(#). Note that the `proxy_server` configuration parameter still needs to be url-encoded.
+ [#13457](https://github.com/Kong/kong/issues/13457)
+
+##### Default
+
+- **AI-proxy**: A configuration validation is added to prevent from enabling `log_statistics` upon
+providers not supporting statistics. Accordingly, the default of `log_statistics` is changed from
+`true` to `false`, and a database migration is added as well for disabling `log_statistics` if it
+has already been enabled upon unsupported providers.
+ [#12860](https://github.com/Kong/kong/issues/12860)
+
+### Kong-Manager
+
+
+
+
+
+
+#### Features
+##### Default
+
+- Improved accessibility in Kong Manager.
+ [#13522](https://github.com/Kong/kong-manager/issues/13522)
+
+
+- Enhanced entity lists so that you can resize or hide list columns.
+ [#13522](https://github.com/Kong/kong-manager/issues/13522)
+
+
+- Added an SNIs field to the certificate form.
+ [#264](https://github.com/Kong/kong-manager/issues/264)
+
+
+#### Fixes
+##### Default
+
+- Improved the user experience in Kong Manager by fixing various UI-related issues.
+ [#232](https://github.com/Kong/kong-manager/issues/232) [#233](https://github.com/Kong/kong-manager/issues/233) [#234](https://github.com/Kong/kong-manager/issues/234) [#237](https://github.com/Kong/kong-manager/issues/237) [#238](https://github.com/Kong/kong-manager/issues/238) [#240](https://github.com/Kong/kong-manager/issues/240) [#244](https://github.com/Kong/kong-manager/issues/244) [#250](https://github.com/Kong/kong-manager/issues/250) [#252](https://github.com/Kong/kong-manager/issues/252) [#255](https://github.com/Kong/kong-manager/issues/255) [#257](https://github.com/Kong/kong-manager/issues/257) [#263](https://github.com/Kong/kong-manager/issues/263) [#264](https://github.com/Kong/kong-manager/issues/264) [#267](https://github.com/Kong/kong-manager/issues/267) [#272](https://github.com/Kong/kong-manager/issues/272)
+
+
+
+
+## 3.7.1
+### Kong
+
+#### Performance
+
+##### Performance
+
+ - Fixed an inefficiency issue in the Luajit hashing algorithm
+ [#13240](https://github.com/Kong/kong/issues/13240)
+
+## 3.7.0
+### Kong
+
+
+#### Performance
+##### Performance
+
+- Improved proxy performance by refactoring internal hooking mechanism.
+ [#12784](https://github.com/Kong/kong/issues/12784)
+
+- Sped up the router matching when the `router_flavor` is `traditional_compatible` or `expressions`.
+ [#12467](https://github.com/Kong/kong/issues/12467)
+##### Plugin
+
+- **Opentelemetry**: Increased queue max batch size to 200.
+ [#12488](https://github.com/Kong/kong/issues/12488)
+
+#### Breaking Changes
+##### Plugin
+
+- **AI Proxy**: To support the new messages API of `Anthropic`, the upstream path of the `Anthropic` for `llm/v1/chat` route type has changed from `/v1/complete` to `/v1/messages`.
+ [#12699](https://github.com/Kong/kong/issues/12699)
+
+
+#### Dependencies
+##### Core
+
+- Bumped atc-router from v1.6.0 to v1.6.2
+ [#12231](https://github.com/Kong/kong/issues/12231)
+
+- Bumped libexpat to 2.6.2
+ [#12910](https://github.com/Kong/kong/issues/12910)
+
+- Bumped lua-kong-nginx-module from 0.8.0 to 0.11.0
+ [#12752](https://github.com/Kong/kong/issues/12752)
+
+- Bumped lua-protobuf to 0.5.1
+ [#12834](https://github.com/Kong/kong/issues/12834)
+
+
+- Bumped lua-resty-acme to 0.13.0
+ [#12909](https://github.com/Kong/kong/issues/12909)
+
+- Bumped lua-resty-aws from 1.3.6 to 1.4.1
+ [#12846](https://github.com/Kong/kong/issues/12846)
+
+- Bumped lua-resty-lmdb from 1.4.1 to 1.4.2
+ [#12786](https://github.com/Kong/kong/issues/12786)
+
+
+- Bumped lua-resty-openssl from 1.2.0 to 1.3.1
+ [#12665](https://github.com/Kong/kong/issues/12665)
+
+
+- Bumped lua-resty-timer-ng to 0.2.7
+ [#12756](https://github.com/Kong/kong/issues/12756)
+
+- Bumped PCRE from the legacy libpcre 8.45 to libpcre2 10.43
+ [#12366](https://github.com/Kong/kong/issues/12366)
+
+- Bumped penlight to 1.14.0
+ [#12862](https://github.com/Kong/kong/issues/12862)
+
+##### Default
+
+- Added package `tzdata` to DEB Docker image for convenient timezone setting.
+ [#12609](https://github.com/Kong/kong/issues/12609)
+
+- Bumped lua-resty-http to 0.17.2.
+ [#12908](https://github.com/Kong/kong/issues/12908)
+
+
+- Bumped LuaRocks from 3.9.2 to 3.11.0
+ [#12662](https://github.com/Kong/kong/issues/12662)
+
+- Bumped `ngx_wasm_module` to `91d447ffd0e9bb08f11cc69d1aa9128ec36b4526`
+ [#12011](https://github.com/Kong/kong/issues/12011)
+
+
+- Bumped `V8` version to `12.0.267.17`
+ [#12704](https://github.com/Kong/kong/issues/12704)
+
+
+- Bumped `Wasmtime` version to `19.0.0`
+ [#12011](https://github.com/Kong/kong/issues/12011)
+
+
+- Improved the robustness of lua-cjson when handling unexpected input.
+ [#12904](https://github.com/Kong/kong/issues/12904)
+
+#### Features
+##### Configuration
+
+- TLSv1.1 and lower versions are disabled by default in OpenSSL 3.x.
+ [#12420](https://github.com/Kong/kong/issues/12420)
+
+- Introduced `nginx_wasm_main_shm_kv` configuration parameter, which enables
+Wasm filters to use the Proxy-Wasm operations `get_shared_data` and
+`set_shared_data` without namespaced keys.
+ [#12663](https://github.com/Kong/kong/issues/12663)
+
+
+- **Schema**: Added a deprecation field attribute to identify deprecated fields
+ [#12686](https://github.com/Kong/kong/issues/12686)
+
+- Added the `wasm_filters` configuration parameter for enabling individual filters
+ [#12843](https://github.com/Kong/kong/issues/12843)
+##### Core
+
+- Added `events:ai:response_tokens`, `events:ai:prompt_tokens` and `events:ai:requests` to the anonymous report to start counting AI usage
+ [#12924](https://github.com/Kong/kong/issues/12924)
+
+
+- Improved config handling when the CP runs with the router set to the `expressions` flavor:
+  - If mixed config is detected and a lower DP is attached to the CP, no config will be sent at all
+  - If the expression is invalid on the CP, no config will be sent at all
+  - If the expression is invalid on a lower DP, it will be sent to the DP and DP validation will catch this and communicate back to the CP (this could result in partial config application)
+ [#12967](https://github.com/Kong/kong/issues/12967)
+
+- The route entity now supports the following fields when the
+`router_flavor` is `expressions`: `methods`, `hosts`, `paths`, `headers`,
+`snis`, `sources`, `destinations`, and `regex_priority`.
+The meaning of these fields are consistent with the traditional route entity.
+ [#12667](https://github.com/Kong/kong/issues/12667)
+##### PDK
+
+- Added the `latencies.receive` property to the log serializer
+ [#12730](https://github.com/Kong/kong/issues/12730)
+##### Plugin
+
+- AI Proxy now reads most prompt tuning parameters from the client,
+while the plugin config parameters under `model_options` are now just defaults.
+This fixes support for using the respective provider's native SDK.
+ [#12903](https://github.com/Kong/kong/issues/12903)
+
+- AI Proxy now has a `preserve` option for `route_type`, where the requests and responses
+are passed directly to the upstream LLM. This is to enable compatibility with any
+and all models and SDKs that may be used when calling the AI services.
+ [#12903](https://github.com/Kong/kong/issues/12903)
+
+- **Prometheus**: Added workspace label to Prometheus plugin metrics.
+ [#12836](https://github.com/Kong/kong/issues/12836)
+
+- **AI Proxy**: Added support for streaming event-by-event responses back to the client on supported providers.
+ [#12792](https://github.com/Kong/kong/issues/12792)
+
+- **AI Prompt Guard**: Increased the maximum length of regex expressions to 500 for the allow and deny parameters.
+ [#12731](https://github.com/Kong/kong/issues/12731)
+
+- Addded support for EdDSA algorithms in JWT plugin
+ [#12726](https://github.com/Kong/kong/issues/12726)
+
+
+- Added support for ES512, PS256, PS384, PS512 algorithms in JWT plugin
+ [#12638](https://github.com/Kong/kong/issues/12638)
+
+- **OpenTelemetry, Zipkin**: The propagation module has been reworked. The new
+options allow better control over the configuration of tracing headers propagation.
+ [#12670](https://github.com/Kong/kong/issues/12670)
+##### Default
+
+- Added support for debugging with EmmyLuaDebugger.  This feature is a
+tech preview and not officially supported by Kong Inc. for now.
+ [#12899](https://github.com/Kong/kong/issues/12899)
+
+#### Fixes
+##### CLI Command
+
+- Fixed an issue where the `pg_timeout` was overridden to `60s` even if `--db-timeout`
+was not explicitly passed in CLI arguments.
+ [#12981](https://github.com/Kong/kong/issues/12981)
+##### Configuration
+
+- Fixed the default value in kong.conf.default documentation from 1000 to 10000
+for the `upstream_keepalive_max_requests` option.
+ [#12643](https://github.com/Kong/kong/issues/12643)
+
+- Fixed an issue where an external plugin (Go, Javascript, or Python) would fail to
+apply a change to the plugin config via the Admin API.
+ [#12718](https://github.com/Kong/kong/issues/12718)
+
+- Disabled usage of the Lua DNS resolver from proxy-wasm by default.
+ [#12825](https://github.com/Kong/kong/issues/12825)
+
+- Set security level of gRPC's TLS to 0 when `ssl_cipher_suite` is set to `old`.
+ [#12613](https://github.com/Kong/kong/issues/12613)
+##### Core
+
+- Fixed an issue where `POST /config?flatten_errors=1` could not return a proper response if the input included duplicate upstream targets.
+ [#12797](https://github.com/Kong/kong/issues/12797)
+
+- **DNS Client**: Ignore a non-positive values on resolv.conf for options timeout, and use a default value of 2 seconds instead.
+ [#12640](https://github.com/Kong/kong/issues/12640)
+
+- Updated the file permission of `kong.logrotate` to 644.
+ [#12629](https://github.com/Kong/kong/issues/12629)
+
+- Fixed a problem on hybrid mode DPs, where a certificate entity configured with a vault reference may not get refreshed on time.
+ [#12868](https://github.com/Kong/kong/issues/12868)
+
+- Fixed the missing router section for the output of the request-debugging.
+ [#12234](https://github.com/Kong/kong/issues/12234)
+
+- Fixed an issue in the internal caching logic where mutexes could get never unlocked.
+ [#12743](https://github.com/Kong/kong/issues/12743)
+
+
+- Fixed an issue where the router didn't work correctly
+when the route's configuration changed.
+ [#12654](https://github.com/Kong/kong/issues/12654)
+
+- Fixed an issue where SNI-based routing didn't work
+using `tls_passthrough` and the `traditional_compatible` router flavor.
+ [#12681](https://github.com/Kong/kong/issues/12681)
+
+- Fixed a bug that `X-Kong-Upstream-Status` didn't appear in the response headers even if it was set in the `headers` parameter in the `kong.conf` file when the response was hit and returned by the Proxy Cache plugin.
+ [#12744](https://github.com/Kong/kong/issues/12744)
+
+- Fixed vault initialization by postponing vault reference resolving on init_worker
+ [#12554](https://github.com/Kong/kong/issues/12554)
+
+- Fixed a bug that allowed vault secrets to refresh even when they had no TTL set.
+ [#12877](https://github.com/Kong/kong/issues/12877)
+
+- **Vault**: do not use incorrect (default) workspace identifier when retrieving vault entity by prefix
+ [#12572](https://github.com/Kong/kong/issues/12572)
+
+- **Core**: Fixed unexpected table nil panic in the balancer's stop_healthchecks function
+ [#12865](https://github.com/Kong/kong/issues/12865)
+
+
+- Use `-1` as the worker ID of privileged agent to avoid access issues.
+ [#12385](https://github.com/Kong/kong/issues/12385)
+
+- **Plugin Server**: Fixed an issue where Kong failed to properly restart MessagePack-based pluginservers (used in Python and Javascript plugins, for example).
+ [#12582](https://github.com/Kong/kong/issues/12582)
+
+- Reverted the hard-coded limitation of the `ngx.read_body()` API in OpenResty upstreams' new versions when downstream connections are in HTTP/2 or HTTP/3 stream modes.
+ [#12658](https://github.com/Kong/kong/issues/12658)
+
+- Each Kong cache instance now utilizes its own cluster event channel. This approach isolates cache invalidation events and reducing the generation of unnecessary worker events.
+ [#12321](https://github.com/Kong/kong/issues/12321)
+
+- Updated telemetry collection for AI Plugins to allow multiple plugins data to be set for the same request.
+ [#12583](https://github.com/Kong/kong/issues/12583)
+##### PDK
+
+- **PDK:** Fixed `kong.request.get_forwarded_port` to always return a number,
+which was caused by an incorrectly stored string value in `ngx.ctx.host_port`.
+ [#12806](https://github.com/Kong/kong/issues/12806)
+
+- The value of `latencies.kong` in the log serializer payload no longer includes
+the response receive time, so it now has the same value as the
+`X-Kong-Proxy-Latency` response header. Response receive time is recorded in
+the new `latencies.receive` metric, so if desired, the old value can be
+calculated as `latencies.kong + latencies.receive`. **Note:** this also
+affects payloads from all logging plugins that use the log serializer:
+`file-log`, `tcp-log`, `udp-log`,`http-log`, `syslog`, and `loggly`, e.g.
+[descriptions of JSON objects for the HTTP Log Plugin's log format](https://docs.konghq.com/hub/kong-inc/http-log/log-format/#json-object-descriptions).
+ [#12795](https://github.com/Kong/kong/issues/12795)
+
+- **Tracing**: enhanced robustness of trace ID parsing
+ [#12848](https://github.com/Kong/kong/issues/12848)
+##### Plugin
+
+- **AI-proxy-plugin**: Fixed the bug that the `route_type` `/llm/v1/chat` didn't include the analytics in the responses.
+ [#12781](https://github.com/Kong/kong/issues/12781)
+
+- **ACME**: Fixed an issue where the certificate was not successfully renewed during ACME renewal.
+ [#12773](https://github.com/Kong/kong/issues/12773)
+
+- **AWS-Lambda**: Fixed an issue where the latency attributed to AWS Lambda API requests was counted as part of the latency in Kong.
+ [#12835](https://github.com/Kong/kong/issues/12835)
+
+- **Jwt**: Fixed an issue where the plugin would fail when using invalid public keys for ES384 and ES512 algorithms.
+ [#12724](https://github.com/Kong/kong/issues/12724)
+
+
+- Added WWW-Authenticate headers to all 401 responses in the Key Auth plugin.
+ [#11794](https://github.com/Kong/kong/issues/11794)
+
+- **Opentelemetry**: Fixed an OTEL sampling mode Lua panic bug, which happened when the `http_response_header_for_traceid` option was enabled.
+ [#12544](https://github.com/Kong/kong/issues/12544)
+
+- Improve error handling in AI plugins.
+ [#12991](https://github.com/Kong/kong/issues/12991)
+
+- **ACME**: Fixed migration of redis configuration.
+ [#12989](https://github.com/Kong/kong/issues/12989)
+
+- **Response-RateLimiting**: Fixed migration of redis configuration.
+ [#12989](https://github.com/Kong/kong/issues/12989)
+
+- **Rate-Limiting**: Fixed migration of redis configuration.
+ [#12989](https://github.com/Kong/kong/issues/12989)
+##### Admin API
+
+- **Admin API**: fixed an issue where calling the endpoint `POST /schemas/vaults/validate` was conflicting with the endpoint `/schemas/vaults/:name` which only has GET implemented, hence resulting in a 405.
+ [#12607](https://github.com/Kong/kong/issues/12607)
+##### Default
+
+- Fixed a bug where, if the the ulimit setting (open files) was low, Kong would fail to start as the `lua-resty-timer-ng` exhausted the available `worker_connections`. Decreased the concurrency range of the `lua-resty-timer-ng` library from `[512, 2048]` to `[256, 1024]` to fix this bug.
+ [#12606](https://github.com/Kong/kong/issues/12606)
+
+- Fix an issue where external plugins using the protobuf-based protocol would fail to call the `kong.Service.SetUpstream` method with an error `bad argument #2 to 'encode' (table expected, got boolean)`.
+ [#12727](https://github.com/Kong/kong/issues/12727)
+
+### Kong-Manager
+
+
+
+
+
+
+#### Features
+##### Default
+
+- Kong Manager now supports creating and editing Expressions routes with an interactive in-browser editor with syntax highlighting and autocompletion features for Kong's Expressions language.
+ [#217](https://github.com/Kong/kong-manager/issues/217)
+
+
+- Kong Manager now groups the parameters to provide a better user experience while configuring plugins. Meanwhile, several issues with the plugin form page were fixed.
+ [#195](https://github.com/Kong/kong-manager/issues/195) [#199](https://github.com/Kong/kong-manager/issues/199) [#201](https://github.com/Kong/kong-manager/issues/201) [#202](https://github.com/Kong/kong-manager/issues/202) [#207](https://github.com/Kong/kong-manager/issues/207) [#208](https://github.com/Kong/kong-manager/issues/208) [#209](https://github.com/Kong/kong-manager/issues/209) [#213](https://github.com/Kong/kong-manager/issues/213) [#216](https://github.com/Kong/kong-manager/issues/216)
+
+
+#### Fixes
+##### Default
+
+- Improved the user experience in Kong Manager by fixing various UI-related issues.
+ [#185](https://github.com/Kong/kong-manager/issues/185) [#188](https://github.com/Kong/kong-manager/issues/188) [#190](https://github.com/Kong/kong-manager/issues/190) [#195](https://github.com/Kong/kong-manager/issues/195) [#199](https://github.com/Kong/kong-manager/issues/199) [#201](https://github.com/Kong/kong-manager/issues/201) [#202](https://github.com/Kong/kong-manager/issues/202) [#207](https://github.com/Kong/kong-manager/issues/207) [#208](https://github.com/Kong/kong-manager/issues/208) [#209](https://github.com/Kong/kong-manager/issues/209) [#213](https://github.com/Kong/kong-manager/issues/213) [#216](https://github.com/Kong/kong-manager/issues/216)
+
+## 3.6.1
+
+### Kong
+
+
+#### Performance
+##### Plugin
+
+- **Opentelemetry**: increase queue max batch size to 200
+ [#12542](https://github.com/Kong/kong/issues/12542)
+
+
+
+#### Dependencies
+##### Core
+
+- Bumped lua-resty-openssl to 1.2.1
+ [#12669](https://github.com/Kong/kong/issues/12669)
+
+
+#### Features
+##### Configuration
+
+- now TLSv1.1 and lower is by default disabled in OpenSSL 3.x
+ [#12556](https://github.com/Kong/kong/issues/12556)
+
+#### Fixes
+##### Configuration
+
+- Fixed default value in kong.conf.default documentation from 1000 to 10000
+for upstream_keepalive_max_requests option.
+ [#12648](https://github.com/Kong/kong/issues/12648)
+
+- Set security level of gRPC's TLS to 0 when ssl_cipher_suite is set to old
+ [#12616](https://github.com/Kong/kong/issues/12616)
+
+##### Core
+
+- Fix the missing router section for the output of the request-debugging
+ [#12649](https://github.com/Kong/kong/issues/12649)
+
+- revert the hard-coded limitation of the ngx.read_body() API in OpenResty upstreams' new versions when downstream connections are in HTTP/2 or HTTP/3 stream modes.
+ [#12666](https://github.com/Kong/kong/issues/12666)
+##### Default
+
+- Fix a bug where the ulimit setting (open files) is low Kong will fail to start as the lua-resty-timer-ng exhausts the available worker_connections. Decrease the concurrency range of the lua-resty-timer-ng library from [512, 2048] to [256, 1024] to fix this bug.
+ [#12608](https://github.com/Kong/kong/issues/12608)
+### Kong-Manager
+
+## 3.6.0
+
+### Kong
+
+
+#### Performance
+##### Performance
+
+- Bumped the concurrency range of the lua-resty-timer-ng library from [32, 256] to [512, 2048].
+ [#12275](https://github.com/Kong/kong/issues/12275)
+
+- Cooperatively yield when building statistics of routes to reduce the impact to proxy path latency.
+ [#12013](https://github.com/Kong/kong/issues/12013)
+
+##### Configuration
+
+- Bump `dns_stale_ttl` default to 1 hour so stale DNS record can be used for longer time in case of resolver downtime.
+ [#12087](https://github.com/Kong/kong/issues/12087)
+
+- Bumped default values of `nginx_http_keepalive_requests` and `upstream_keepalive_max_requests` to `10000`. These changes are optimized to work better in systems with high throughput. In a low-throughput setting, these new settings may have visible effects in loadbalancing - it can take more requests to start using all the upstreams than before.
+ [#12223](https://github.com/Kong/kong/issues/12223)
+##### Core
+
+- Reuse match context between requests to avoid frequent memory allocation/deallocation
+ [#12258](https://github.com/Kong/kong/issues/12258)
+##### PDK
+
+- Performance optimization to avoid unnecessary creations and garbage-collections of spans
+ [#12080](https://github.com/Kong/kong/issues/12080)
+
+#### Breaking Changes
+##### Core
+
+- **BREAKING:** To avoid ambiguity with other Wasm-related nginx.conf directives, the prefix for Wasm `shm_kv` nginx.conf directives was changed from `nginx_wasm_shm_` to `nginx_wasm_shm_kv_`
+ [#11919](https://github.com/Kong/kong/issues/11919)
+
+- In OpenSSL 3.2, the default SSL/TLS security level has been changed from 1 to 2.
+  Which means security level set to 112 bits of security. As a result
+  RSA, DSA and DH keys shorter than 2048 bits and ECC keys shorter than
+  224 bits are prohibited. In addition to the level 1 exclusions any cipher
+  suite using RC4 is also prohibited. SSL version 3 is also not allowed.
+  Compression is disabled.
+  [#7714](https://github.com/Kong/kong/issues/7714)
+
+##### Plugin
+
+- **azure-functions**: azure-functions plugin now eliminates upstream/request URI and only use `routeprefix` configuration field to construct request path when requesting Azure API
+ [#11850](https://github.com/Kong/kong/issues/11850)
+
+#### Deprecations
+##### Plugin
+
+- **ACME**: Standardize redis configuration across plugins. The redis configuration right now follows common schema that is shared across other plugins.
+ [#12300](https://github.com/Kong/kong/issues/12300)
+
+- **Rate Limiting**: Standardize redis configuration across plugins. The redis configuration right now follows common schema that is shared across other plugins.
+ [#12301](https://github.com/Kong/kong/issues/12301)
+
+- **Response-RateLimiting**: Standardize redis configuration across plugins. The redis configuration right now follows common schema that is shared across other plugins.
+ [#12301](https://github.com/Kong/kong/issues/12301)
+
+#### Dependencies
+##### Core
+
+- Bumped atc-router from 1.2.0 to 1.6.0
+ [#12231](https://github.com/Kong/kong/issues/12231)
+
+- Bumped kong-lapis from 1.14.0.3 to 1.16.0.1
+ [#12064](https://github.com/Kong/kong/issues/12064)
+
+
+- Bumped LPEG from 1.0.2 to 1.1.0
+ [#11955](https://github.com/Kong/kong/issues/11955)
+ [UTF-8](https://konghq.atlassian.net/browse/UTF-8)
+
+- Bumped lua-messagepack from 0.5.2 to 0.5.3
+ [#11956](https://github.com/Kong/kong/issues/11956)
+
+
+- Bumped lua-messagepack from 0.5.3 to 0.5.4
+ [#12076](https://github.com/Kong/kong/issues/12076)
+
+
+- Bumped lua-resty-aws from 1.3.5 to 1.3.6
+ [#12439](https://github.com/Kong/kong/issues/12439)
+
+
+- Bumped lua-resty-healthcheck from 3.0.0 to 3.0.1
+ [#12237](https://github.com/Kong/kong/issues/12237)
+
+- Bumped lua-resty-lmdb from 1.3.0 to 1.4.1
+ [#12026](https://github.com/Kong/kong/issues/12026)
+
+- Bumped lua-resty-timer-ng from 0.2.5 to 0.2.6
+ [#12275](https://github.com/Kong/kong/issues/12275)
+
+- Bumped OpenResty from 1.21.4.2 to 1.25.3.1
+ [#12327](https://github.com/Kong/kong/issues/12327)
+
+- Bumped OpenSSL from 3.1.4 to 3.2.1
+ [#12264](https://github.com/Kong/kong/issues/12264)
+
+- Bump resty-openssl from 0.8.25 to 1.2.0
+ [#12265](https://github.com/Kong/kong/issues/12265)
+
+
+- Bumped ngx_brotli to master branch, and disabled it on rhel7 rhel9-arm64 and amazonlinux-2023-arm64 due to toolchain issues
+ [#12444](https://github.com/Kong/kong/issues/12444)
+
+- Bumped lua-resty-healthcheck from 1.6.3 to 3.0.0
+ [#11834](https://github.com/Kong/kong/issues/11834)
+##### Default
+
+- Bump `ngx_wasm_module` to `a7087a37f0d423707366a694630f1e09f4c21728`
+ [#12011](https://github.com/Kong/kong/issues/12011)
+
+
+- Bump `Wasmtime` version to `14.0.3`
+ [#12011](https://github.com/Kong/kong/issues/12011)
+
+
+#### Features
+##### Configuration
+
+- display a warning message when Kong Manager is enabled but the Admin API is not enabled
+ [#12071](https://github.com/Kong/kong/issues/12071)
+
+- add DHE-RSA-CHACHA20-POLY1305 cipher to the intermediate configuration
+ [#12133](https://github.com/Kong/kong/issues/12133)
+
+- The default value of `dns_no_sync` option has been changed to `off`
+ [#11869](https://github.com/Kong/kong/issues/11869)
+
+- Allow to inject Nginx directives into Kong's proxy location block
+ [#11623](https://github.com/Kong/kong/issues/11623)
+
+
+- Validate LMDB cache by Kong's version (major + minor),
+wiping the content if tag mismatch to avoid compatibility issues
+during minor version upgrade.
+ [#12026](https://github.com/Kong/kong/issues/12026)
+##### Core
+
+- Adds telemetry collection for AI Proxy, AI Request Transformer, and AI Response Transformer, pertaining to model and provider usage.
+ [#12495](https://github.com/Kong/kong/issues/12495)
+
+
+- add ngx_brotli module to kong prebuild nginx
+ [#12367](https://github.com/Kong/kong/issues/12367)
+
+- Allow primary key passed as a full entity to DAO functions.
+ [#11695](https://github.com/Kong/kong/issues/11695)
+
+
+- Build deb packages for Debian 12. The debian variant of kong docker image is built using Debian 12 now.
+ [#12218](https://github.com/Kong/kong/issues/12218)
+
+- The expressions route now supports the `!` (not) operator, which allows creating routes like
+`!(http.path =^ "/a")` and `!(http.path == "/a" || http.path == "/b")`
+ [#12419](https://github.com/Kong/kong/issues/12419)
+
+- Add `source` property to log serializer, indicating the response is generated by `kong` or `upstream`.
+ [#12052](https://github.com/Kong/kong/issues/12052)
+
+- Ensure Kong-owned directories are cleaned up after an uninstall using the system's package manager.
+ [#12162](https://github.com/Kong/kong/issues/12162)
+
+- Support `http.path.segments.len` and `http.path.segments.*` fields in the expressions router
+which allows matching incoming (normalized) request path by individual segment or ranges of segments,
+plus checking the total number of segments.
+ [#12283](https://github.com/Kong/kong/issues/12283)
+
+- `net.src.*` and `net.dst.*` match fields are now accessible in HTTP routes defined using expressions.
+ [#11950](https://github.com/Kong/kong/issues/11950)
+
+- Extend support for getting and setting Gateway values via proxy-wasm properties in the `kong.*` namespace.
+ [#11856](https://github.com/Kong/kong/issues/11856)
+
+##### PDK
+
+- Increase the precision of JSON number encoding from 14 to 16 decimals
+ [#12019](https://github.com/Kong/kong/issues/12019)
+##### Plugin
+
+- Introduced the new **AI Prompt Decorator** plugin that enables prepending and appending llm/v1/chat messages onto consumer LLM requests, for prompt tuning.
+ [#12336](https://github.com/Kong/kong/issues/12336)
+
+
+- Introduced the new **AI Prompt Guard** which can allow and/or block  LLM requests based on pattern matching.
+ [#12427](https://github.com/Kong/kong/issues/12427)
+
+
+- Introduced the new **AI Prompt Template** which can offer consumers and array of LLM prompt templates, with variable substitutions.
+ [#12340](https://github.com/Kong/kong/issues/12340)
+
+
+- Introduced the new **AI Proxy** plugin that enables simplified integration with various AI provider Large Language Models.
+ [#12323](https://github.com/Kong/kong/issues/12323)
+
+
+- Introduced the new **AI Request Transformer** plugin that enables passing mid-flight consumer requests to an LLM for transformation or sanitization.
+ [#12426](https://github.com/Kong/kong/issues/12426)
+
+
+- Introduced the new **AI Response Transformer** plugin that enables passing mid-flight upstream responses to an LLM for transformation or sanitization.
+ [#12426](https://github.com/Kong/kong/issues/12426)
+
+
+- Tracing Sampling Rate can now be set via the `config.sampling_rate` property of the OpenTelemetry plugin instead of it just being a global setting for the gateway.
+ [#12054](https://github.com/Kong/kong/issues/12054)
+##### Admin API
+
+- add gateway edition to the root endpoint of the admin api
+ [#12097](https://github.com/Kong/kong/issues/12097)
+
+- Enable `status_listen` on `127.0.0.1:8007` by default
+ [#12304](https://github.com/Kong/kong/issues/12304)
+##### Clustering
+
+- **Clustering**: Expose data plane certificate expiry date on the control plane API.
+ [#11921](https://github.com/Kong/kong/issues/11921)
+
+#### Fixes
+##### Configuration
+
+- fix error data loss caused by weakly typed of function in declarative_config_flattened function
+ [#12167](https://github.com/Kong/kong/issues/12167)
+
+- respect custom `proxy_access_log`
+ [#12073](https://github.com/Kong/kong/issues/12073)
+##### Core
+
+- prevent ca to be deleted when it's still referenced by other entities and invalidate the related ca store caches when a ca cert is updated.
+ [#11789](https://github.com/Kong/kong/issues/11789)
+
+- Now cookie names are validated against RFC 6265, which allows more characters than the previous validation.
+ [#11881](https://github.com/Kong/kong/issues/11881)
+
+
+- Remove nulls only if the schema has transformations definitions.
+Improve performance as most schemas does not define transformations.
+ [#12284](https://github.com/Kong/kong/issues/12284)
+
+- Fix a bug that the error_handler can not provide the meaningful response body when the internal error code 494 is triggered.
+ [#12114](https://github.com/Kong/kong/issues/12114)
+
+- Header value matching (`http.headers.*`) in `expressions` router flavor are now case sensitive.
+This change does not affect on `traditional_compatible` mode
+where header value match are always performed ignoring the case.
+ [#11905](https://github.com/Kong/kong/issues/11905)
+
+- print error message correctly when plugin fails
+ [#11800](https://github.com/Kong/kong/issues/11800)
+
+- fix ldoc intermittent failure caused by LuaJIT error.
+ [#11983](https://github.com/Kong/kong/issues/11983)
+
+- use NGX_WASM_MODULE_BRANCH environment variable to set ngx_wasm_module repository branch when building Kong.
+ [#12241](https://github.com/Kong/kong/issues/12241)
+
+- Eliminate asynchronous timer in syncQuery() to prevent hang risk
+ [#11900](https://github.com/Kong/kong/issues/11900)
+
+- **tracing:** Fixed an issue where a DNS query failure would cause a tracing failure.
+ [#11935](https://github.com/Kong/kong/issues/11935)
+
+- Expressions route in `http` and `stream` subsystem now have stricter validation.
+Previously they share the same validation schema which means admin can configure expressions
+route using fields like `http.path` even for stream routes. This is no longer allowed.
+ [#11914](https://github.com/Kong/kong/issues/11914)
+
+- **Tracing**: dns spans are now correctly generated for upstream dns queries (in addition to cosocket ones)
+ [#11996](https://github.com/Kong/kong/issues/11996)
+
+- Validate private and public key for `keys` entity to ensure they match each other.
+ [#11923](https://github.com/Kong/kong/issues/11923)
+
+- **proxy-wasm**: Fixed "previous plan already attached" error thrown when a filter triggers re-entrancy of the access handler.
+ [#12452](https://github.com/Kong/kong/issues/12452)
+##### PDK
+
+- response.set_header support header argument with table array of string
+ [#12164](https://github.com/Kong/kong/issues/12164)
+
+- Fix an issue that when using kong.response.exit, the Transfer-Encoding header set by user is not removed
+ [#11936](https://github.com/Kong/kong/issues/11936)
+
+- **Plugin Server**: fix an issue where every request causes a new plugin instance to be created
+ [#12020](https://github.com/Kong/kong/issues/12020)
+##### Plugin
+
+- Add missing WWW-Authenticate headers to 401 response in basic auth plugin.
+ [#11795](https://github.com/Kong/kong/issues/11795)
+
+- Enhance error responses for authentication failures in the Admin API
+ [#12456](https://github.com/Kong/kong/issues/12456)
+
+- Expose metrics for serviceless routes
+ [#11781](https://github.com/Kong/kong/issues/11781)
+
+- **Rate Limiting**: fix to provide better accuracy in counters when sync_rate is used with the redis policy.
+ [#11859](https://github.com/Kong/kong/issues/11859)
+
+- **Rate Limiting**: fix an issuer where all counters are synced to the same DB at the same rate.
+ [#12003](https://github.com/Kong/kong/issues/12003)
+
+- **Datadog**: Fix a bug that datadog plugin is not triggered for serviceless routes. In this fix, datadog plugin is always triggered, and the value of tag `name`(service_name) is set as an empty value.
+ [#12068](https://github.com/Kong/kong/issues/12068)
+##### Clustering
+
+- Fix a bug causing data-plane status updates to fail when an empty PING frame is received from a data-plane
+ [#11917](https://github.com/Kong/kong/issues/11917)
+### Kong-Manager
+
+
+
+
+
+
+#### Features
+##### Default
+
+- Added a JSON/YAML format preview for all entity forms.
+ [#157](https://github.com/Kong/kong-manager/issues/157)
+
+
+- Adopted resigned basic components for better UI/UX.
+ [#131](https://github.com/Kong/kong-manager/issues/131) [#166](https://github.com/Kong/kong-manager/issues/166)
+
+
+- Kong Manager and Konnect now share the same UI for plugin selection page and plugin form page.
+ [#143](https://github.com/Kong/kong-manager/issues/143) [#147](https://github.com/Kong/kong-manager/issues/147)
+
+
+#### Fixes
+##### Default
+
+- Standardized notification text format.
+ [#140](https://github.com/Kong/kong-manager/issues/140)
+
+## 3.5.0
+### Kong
+
+
+#### Performance
+##### Configuration
+
+- Bumped the default value of `upstream_keepalive_pool_size` to `512` and `upstream_keepalive_max_requests` to `1000`
+  [#11515](https://github.com/Kong/kong/issues/11515)
+##### Core
+
+- refactor workspace id and name retrieval
+  [#11442](https://github.com/Kong/kong/issues/11442)
+
+#### Breaking Changes
+##### Plugin
+
+- **Session**: a new configuration field `read_body_for_logout` was added with a default value of `false`, that changes behavior of `logout_post_arg` in a way that it is not anymore considered if the `read_body_for_logout` is not explicitly set to `true`. This is to avoid session plugin from reading request bodies by default on e.g. `POST` request for logout detection.
+  [#10333](https://github.com/Kong/kong/issues/10333)
+
+
+#### Dependencies
+##### Core
+
+- Bumped resty.openssl from 0.8.23 to 0.8.25
+  [#11518](https://github.com/Kong/kong/issues/11518)
+
+- Fix incorrect LuaJIT register allocation for IR_*LOAD on ARM64
+  [#11638](https://github.com/Kong/kong/issues/11638)
+
+- Fix LDP/STP fusing for unaligned accesses on ARM64
+  [#11639](https://github.com/Kong/kong/issues/11639)
+
+
+- Bump lua-kong-nginx-module from 0.6.0 to 0.8.0
+  [#11663](https://github.com/Kong/kong/issues/11663)
+
+- Fix incorrect LuaJIT LDP/STP fusion on ARM64 which may sometimes cause incorrect logic
+  [#11537](https://github.com/Kong/kong/issues/11537)
+
+##### Default
+
+- Bumped lua-resty-healthcheck from 1.6.2 to 1.6.3
+  [#11360](https://github.com/Kong/kong/issues/11360)
+
+- Bumped OpenResty from 1.21.4.1 to 1.21.4.2
+  [#11360](https://github.com/Kong/kong/issues/11360)
+
+- Bumped LuaSec from 1.3.1 to 1.3.2
+  [#11553](https://github.com/Kong/kong/issues/11553)
+
+
+- Bumped lua-resty-aws from 1.3.1 to 1.3.5
+  [#11613](https://github.com/Kong/kong/issues/11613)
+
+
+- bump OpenSSL from 3.1.1 to 3.1.4
+  [#11844](https://github.com/Kong/kong/issues/11844)
+
+
+- Bumped kong-lapis from 1.14.0.2 to 1.14.0.3
+  [#11849](https://github.com/Kong/kong/issues/11849)
+
+
+- Bumped ngx_wasm_module to latest rolling release version.
+  [#11678](https://github.com/Kong/kong/issues/11678)
+
+- Bump Wasmtime version to 12.0.2
+  [#11738](https://github.com/Kong/kong/issues/11738)
+
+- Bumped lua-resty-aws from 1.3.0 to 1.3.1
+  [#11419](https://github.com/Kong/kong/pull/11419)
+
+- Bumped lua-resty-session from 4.0.4 to 4.0.5
+  [#11416](https://github.com/Kong/kong/pull/11416)
+
+
+#### Features
+##### Core
+
+- Add a new endpoint `/schemas/vaults/:name` to retrieve the schema of a vault.
+  [#11727](https://github.com/Kong/kong/issues/11727)
+
+- rename `privileged_agent` to `dedicated_config_processing. Enable `dedicated_config_processing` by default
+  [#11784](https://github.com/Kong/kong/issues/11784)
+
+- Support observing the time consumed by some components in the given request.
+  [#11627](https://github.com/Kong/kong/issues/11627)
+
+- Plugins can now implement `Plugin:configure(configs)` function that is called whenever there is a change in plugin entities. An array of current plugin configurations is passed to the function, or `nil` in case there is no active configurations for the plugin.
+  [#11703](https://github.com/Kong/kong/issues/11703)
+
+- Add a request-aware table able to detect accesses from different requests.
+  [#11017](https://github.com/Kong/kong/issues/11017)
+
+- A unique Request ID is now populated in the error log, access log, error templates, log serializer, and in a new X-Kong-Request-Id header (configurable for upstream/downstream using the `headers` and `headers_upstream` configuration options).
+  [#11663](https://github.com/Kong/kong/issues/11663)
+
+- Add support for optional Wasm filter configuration schemas
+  [#11568](https://github.com/Kong/kong/issues/11568)
+
+- Support JSON in Wasm filter configuration
+  [#11697](https://github.com/Kong/kong/issues/11697)
+
+- Support HTTP query parameters in expression routes.
+  [#11348](https://github.com/Kong/kong/pull/11348)
+
+##### Plugin
+
+- **response-ratelimiting**: add support for secret rotation with redis connection
+  [#10570](https://github.com/Kong/kong/issues/10570)
+
+
+- **CORS**: Support the `Access-Control-Request-Private-Network` header in crossing-origin pre-light requests
+  [#11523](https://github.com/Kong/kong/issues/11523)
+
+- add scan_count to redis storage schema
+  [#11532](https://github.com/Kong/kong/issues/11532)
+
+
+- **AWS-Lambda**: the AWS-Lambda plugin has been refactored by using `lua-resty-aws` as an
+  underlying AWS library. The refactor simplifies the AWS-Lambda plugin code base and
+  adding support for multiple IAM authenticating scenarios.
+  [#11350](https://github.com/Kong/kong/pull/11350)
+
+- **OpenTelemetry** and **Zipkin**: Support GCP X-Cloud-Trace-Context header
+  The field `header_type` now accepts the value `gcp` to propagate the
+  Google Cloud trace header
+  [#11254](https://github.com/Kong/kong/pull/11254)
+
+##### Clustering
+
+- **Clustering**: Allow configuring DP metadata labels for on-premise CP Gateway
+  [#11625](https://github.com/Kong/kong/issues/11625)
+
+#### Fixes
+##### Configuration
+
+- The default value of `dns_no_sync` option has been changed to `on`
+  [#11871](https://github.com/Kong/kong/issues/11871)
+
+##### Core
+
+- Fix an issue that the TTL of the key-auth plugin didnt work in DB-less and Hybrid mode.
+  [#11464](https://github.com/Kong/kong/issues/11464)
+
+- Fix a problem that abnormal socket connection will be reused when querying Postgres database.
+  [#11480](https://github.com/Kong/kong/issues/11480)
+
+- Fix upstream ssl failure when plugins use response handler
+  [#11502](https://github.com/Kong/kong/issues/11502)
+
+- Fix an issue that protocol `tls_passthrough` can not work with expressions flavor
+  [#11538](https://github.com/Kong/kong/issues/11538)
+
+- Fix a bug that will cause a failure of sending tracing data to datadog when value of x-datadog-parent-id header in requests is a short dec string
+  [#11599](https://github.com/Kong/kong/issues/11599)
+
+- Apply Nginx patch for detecting HTTP/2 stream reset attacks early (CVE-2023-44487)
+  [#11743](https://github.com/Kong/kong/issues/11743)
+
+- fix the building failure when applying patches
+  [#11696](https://github.com/Kong/kong/issues/11696)
+
+- Vault references can be used in Dbless mode in declarative config
+  [#11845](https://github.com/Kong/kong/issues/11845)
+
+
+- Properly warmup Vault caches on init
+  [#11827](https://github.com/Kong/kong/issues/11827)
+
+
+- Vault resurrect time is respected in case a vault secret is deleted from a vault
+  [#11852](https://github.com/Kong/kong/issues/11852)
+
+- Fixed critical level logs when starting external plugin servers. Those logs cannot be suppressed due to the limitation of OpenResty. We choose to remove the socket availability detection feature.
+  [#11372](https://github.com/Kong/kong/pull/11372)
+
+- Fix an issue where a crashing Go plugin server process would cause subsequent
+  requests proxied through Kong to execute Go plugins with inconsistent configurations.
+  The issue only affects scenarios where the same Go plugin is applied to different Route
+  or Service entities.
+  [#11306](https://github.com/Kong/kong/pull/11306)
+
+- Fix an issue where cluster_cert or cluster_ca_cert is inserted into lua_ssl_trusted_certificate before being base64 decoded.
+  [#11385](https://github.com/Kong/kong/pull/11385)
+
+- Fix cache warmup mechanism not working in `acls` plugin groups config entity scenario.
+  [#11414](https://github.com/Kong/kong/pull/11414)
+
+- Fix an issue that queue stops processing when a hard error is encountered in the handler function.
+  [#11423](https://github.com/Kong/kong/pull/11423)
+
+- Fix an issue that query parameters are not forwarded in proxied request.
+  Thanks [@chirag-manwani](https://github.com/chirag-manwani) for contributing this change.
+  [#11328](https://github.com/Kong/kong/pull/11328)
+
+- Fix an issue that response status code is not real upstream status when using kong.response function.
+  [#11437](https://github.com/Kong/kong/pull/11437)
+
+- Removed a hardcoded proxy-wasm isolation level setting that was preventing the
+  `nginx_http_proxy_wasm_isolation` configuration value from taking effect.
+  [#11407](https://github.com/Kong/kong/pull/11407)
+
+##### PDK
+
+- Fix several issues in Vault and refactor the Vault code base: - Make DAOs to fallback to empty string when resolving Vault references fail - Use node level mutex when rotation references  - Refresh references on config changes - Update plugin referenced values only once per request - Pass only the valid config options to vault implementations - Resolve multi-value secrets only once when rotating them - Do not start vault secrets rotation timer on control planes - Re-enable negative caching - Reimplement the kong.vault.try function - Remove references from rotation in case their configuration has changed
+  [#11652](https://github.com/Kong/kong/issues/11652)
+
+- Fix response body gets repeated when `kong.response.get_raw_body()` is called multiple times in a request lifecycle.
+  [#11424](https://github.com/Kong/kong/issues/11424)
+
+- Tracing: fix an issue that resulted in some parent spans to end before their children due to different precision of their timestamps
+  [#11484](https://github.com/Kong/kong/issues/11484)
+
+- Fix a bug related to data interference between requests in the kong.log.serialize function.
+  [#11566](https://github.com/Kong/kong/issues/11566)
+##### Plugin
+
+- **Opentelemetry**: fix an issue that resulted in invalid parent IDs in the propagated tracing headers
+  [#11468](https://github.com/Kong/kong/issues/11468)
+
+- **AWS-Lambda**: let plugin-level proxy take effect on EKS IRSA credential provider
+  [#11551](https://github.com/Kong/kong/issues/11551)
+
+- Cache the AWS lambda service by those lambda service related fields
+  [#11821](https://github.com/Kong/kong/issues/11821)
+
+- **Opentelemetry**: fix an issue that resulted in traces with invalid parent IDs when `balancer` instrumentation was enabled
+  [#11830](https://github.com/Kong/kong/issues/11830)
+
+
+- **tcp-log**: fix an issue of unnecessary handshakes when reusing TLS connection
+  [#11848](https://github.com/Kong/kong/issues/11848)
+
+- **OAuth2**: For OAuth2 plugin, `scope` has been taken into account as a new criterion of the request validation. When refreshing token with `refresh_token`, the scopes associated with the `refresh_token` provided in the request must be same with or a subset of the scopes configured in the OAuth2 plugin instance hit by the request.
+  [#11342](https://github.com/Kong/kong/pull/11342)
+
+- When the worker is in shutdown mode and more data is immediately available without waiting for `max_coalescing_delay`, queues are now cleared in batches.
+  Thanks [@JensErat](https://github.com/JensErat) for contributing this change.
+  [#11376](https://github.com/Kong/kong/pull/11376)
+
+- A race condition in the plugin queue could potentially crash the worker when `max_entries` was set to `max_batch_size`.
+  [#11378](https://github.com/Kong/kong/pull/11378)
+
+- **AWS-Lambda**: fix an issue that the AWS-Lambda plugin cannot extract a json encoded proxy integration response.
+  [#11413](https://github.com/Kong/kong/pull/11413)
+
+##### Default
+
+- Restore lapis & luarocks-admin bins
+  [#11578](https://github.com/Kong/kong/issues/11578)
+### Kong-Manager
+
+
+
+
+
+
+#### Features
+##### Default
+
+- Add `JSON` and `YAML` formats in entity config cards.
+  [#111](https://github.com/Kong/kong-manager/issues/111)
+
+
+- Plugin form fields now display descriptions from backend schema.
+  [#66](https://github.com/Kong/kong-manager/issues/66)
+
+
+- Add the `protocols` field in plugin form.
+  [#93](https://github.com/Kong/kong-manager/issues/93)
+
+
+- The upstream target list shows the `Mark Healthy` and `Mark Unhealthy` action items when certain conditions are met.
+  [#86](https://github.com/Kong/kong-manager/issues/86)
+
+
+#### Fixes
+##### Default
+
+- Fix incorrect port number in Port Details.
+  [#103](https://github.com/Kong/kong-manager/issues/103)
+
+
+- Fix a bug where the `proxy-cache` plugin cannot be installed.
+  [#104](https://github.com/Kong/kong-manager/issues/104)
+
+## 3.4.2
+
+### Kong
+
+#### Fixes
+##### Core
+
+- Apply Nginx patch for detecting HTTP/2 stream reset attacks early (CVE-2023-44487)
+ [#11743](https://github.com/Kong/kong/issues/11743)
+ [CVE-2023](https://konghq.atlassian.net/browse/CVE-2023) [nginx-1](https://konghq.atlassian.net/browse/nginx-1) [SIR-435](https://konghq.atlassian.net/browse/SIR-435)
+
+## 3.4.1
+
+### Kong
+
+
+#### Additions
+
+##### Core
+
+- Support HTTP query parameters in expression routes.
+  [#11348](https://github.com/Kong/kong/pull/11348)
+
+
+#### Dependencies
+
+##### Core
+
+- Fix incorrect LuaJIT LDP/STP fusion on ARM64 which may sometimes cause incorrect logic
+  [#11537](https://github.com/Kong/kong-ee/issues/11537)
+
+
+
+#### Fixes
+
+##### Core
+
+- Removed a hardcoded proxy-wasm isolation level setting that was preventing the
+  `nginx_http_proxy_wasm_isolation` configuration value from taking effect.
+  [#11407](https://github.com/Kong/kong/pull/11407)
+- Fix an issue that the TTL of the key-auth plugin didnt work in DB-less and Hybrid mode.
+  [#11464](https://github.com/Kong/kong-ee/issues/11464)
+- Fix a problem that abnormal socket connection will be reused when querying Postgres database.
+  [#11480](https://github.com/Kong/kong-ee/issues/11480)
+- Fix upstream ssl failure when plugins use response handler
+  [#11502](https://github.com/Kong/kong-ee/issues/11502)
+- Fix an issue that protocol `tls_passthrough` can not work with expressions flavor
+  [#11538](https://github.com/Kong/kong-ee/issues/11538)
+
+##### PDK
+
+- Fix several issues in Vault and refactor the Vault code base: - Make DAOs to fallback to empty string when resolving Vault references fail - Use node level mutex when rotation references  - Refresh references on config changes - Update plugin referenced values only once per request - Pass only the valid config options to vault implementations - Resolve multi-value secrets only once when rotating them - Do not start vault secrets rotation timer on control planes - Re-enable negative caching - Reimplement the kong.vault.try function - Remove references from rotation in case their configuration has changed
+
+[#11402](https://github.com/Kong/kong-ee/issues/11402)
+- Tracing: fix an issue that resulted in some parent spans to end before their children due to different precision of their timestamps
+  [#11484](https://github.com/Kong/kong-ee/issues/11484)
+
+##### Plugin
+
+- **Opentelemetry**: fix an issue that resulted in invalid parent IDs in the propagated tracing headers
+  [#11468](https://github.com/Kong/kong-ee/issues/11468)
+
+### Kong Manager
+
+#### Fixes
+
+- Fixed entity docs link.
+  [#92](https://github.com/Kong/kong-manager/pull/92)
+
+## 3.4.0
+
+### Breaking Changes
+
+- :warning: Alpine packages and Docker images based on Alpine are no longer supported
+  [#10926](https://github.com/Kong/kong/pull/10926)
+- :warning: Cassandra as a datastore for Kong is no longer supported
+  [#10931](https://github.com/Kong/kong/pull/10931)
+- Ubuntu 18.04 artifacts are no longer supported as it's EOL
+- AmazonLinux 2022 artifacts are renamed to AmazonLinux 2023 according to AWS's decision
+
+### Deprecations
+
+- **CentOS packages are now removed from the release and are no longer supported in future versions.**
+
+### Additions
+
+#### Core
+
+- Enable `expressions` and `traditional_compatible` router flavor in stream subsystem.
+  [#11071](https://github.com/Kong/kong/pull/11071)
+- Make upstream `host_header` and router `preserve_host` config work in stream tls proxy.
+  [#11244](https://github.com/Kong/kong/pull/11244)
+- Add beta support for WebAssembly/proxy-wasm
+  [#11218](https://github.com/Kong/kong/pull/11218)
+- '/schemas' endpoint returns additional information about cross-field validation as part of the schema.
+  This should help tools that use the Admin API to perform better client-side validation.
+  [#11108](https://github.com/Kong/kong/pull/11108)
+
+#### Kong Manager
+- First release of the Kong Manager Open Source Edition.
+  [#11131](https://github.com/Kong/kong/pull/11131)
+
+#### Plugins
+
+- **OpenTelemetry**: Support AWS X-Ray propagation header
+  The field `header_type`now accepts the `aws` value to handle this specific
+  propagation header.
+  [11075](https://github.com/Kong/kong/pull/11075)
+- **Opentelemetry**: Support the `endpoint` parameter as referenceable.
+  [#11220](https://github.com/Kong/kong/pull/11220)
+- **Ip-Restriction**: Add TCP support to the plugin.
+  Thanks [@scrudge](https://github.com/scrudge) for contributing this change.
+  [#10245](https://github.com/Kong/kong/pull/10245)
+
+#### Performance
+
+- In dbless mode, the declarative schema is now fully initialized at startup
+  instead of on-demand in the request path. This is most evident in decreased
+  response latency when updating configuration via the `/config` API endpoint.
+  [#10932](https://github.com/Kong/kong/pull/10932)
+- The Prometheus plugin has been optimized to reduce proxy latency impacts during scraping.
+  [#10949](https://github.com/Kong/kong/pull/10949)
+  [#11040](https://github.com/Kong/kong/pull/11040)
+  [#11065](https://github.com/Kong/kong/pull/11065)
+
+### Fixes
+
+#### Core
+
+- Declarative config now performs proper uniqueness checks against its inputs:
+  previously, it would silently drop entries with conflicting primary/endpoint
+  keys, or accept conflicting unique fields silently.
+  [#11199](https://github.com/Kong/kong/pull/11199)
+- Fixed a bug that causes `POST /config?flatten_errors=1` to throw an exception
+  and return a 500 error under certain circumstances.
+  [#10896](https://github.com/Kong/kong/pull/10896)
+- Fix a bug when worker consuming dynamic log level setting event and using a wrong reference for notice logging
+  [#10897](https://github.com/Kong/kong/pull/10897)
+- Added a `User=` specification to the systemd unit definition so that
+  Kong can be controlled by systemd again.
+  [#11066](https://github.com/Kong/kong/pull/11066)
+- Fix a bug that caused sampling rate to be applied to individual spans producing split traces.
+  [#11135](https://github.com/Kong/kong/pull/11135)
+- Fix a bug that caused spans to not be instrumented with http.status_code when the request was not proxied to an upstream.
+  Thanks [@backjo](https://github.com/backjo) for contributing this change.
+  [#11152](https://github.com/Kong/kong/pull/11152),
+  [#11406](https://github.com/Kong/kong/pull/11406)
+- Fix a bug that caused the router to fail in `traditional_compatible` mode when a route with multiple paths and no service was created.
+  [#11158](https://github.com/Kong/kong/pull/11158)
+- Fix an issue where the router of flavor `expressions` can not work correctly
+  when `route.protocols` is set to `grpc` or `grpcs`.
+  [#11082](https://github.com/Kong/kong/pull/11082)
+- Fix an issue where the router of flavor `expressions` can not configure https redirection.
+  [#11166](https://github.com/Kong/kong/pull/11166)
+- Added new span attribute `net.peer.name` if balancer_data.hostname is available.
+  Thanks [@backjo](https://github.com/backjo) for contributing this change.
+  [#10723](https://github.com/Kong/kong/pull/10729)
+- Make `kong vault get` CLI command work in dbless mode by injecting the necessary directives into the kong cli nginx.conf.
+  [#11127](https://github.com/Kong/kong/pull/11127)
+  [#11291](https://github.com/Kong/kong/pull/11291)
+- Fix an issue where a crashing Go plugin server process would cause subsequent
+  requests proxied through Kong to execute Go plugins with inconsistent configurations.
+  The issue only affects scenarios where the same Go plugin is applied to different Route
+  or Service entities.
+  [#11306](https://github.com/Kong/kong/pull/11306)
+- Fix an issue where cluster_cert or cluster_ca_cert is inserted into lua_ssl_trusted_certificate before being base64 decoded.
+  [#11385](https://github.com/Kong/kong/pull/11385)
+- Update the DNS client to follow configured timeouts in a more predictable manner.  Also fix a corner case in its
+  behavior that could cause it to resolve incorrectly during transient network and DNS server failures.
+  [#11386](https://github.com/Kong/kong/pull/11386)
+
+#### Admin API
+
+- Fix an issue where `/schemas/plugins/validate` endpoint fails to validate valid plugin configuration
+  when the key of `custom_fields_by_lua` contains dot character(s).
+  [#11091](https://github.com/Kong/kong/pull/11091)
+- Fix an issue with the `/tags/:tag` Admin API returning a JSON object (`{}`) instead of an array (`[]`) for empty data sets.
+  [#11213](https://github.com/Kong/kong/pull/11213)
+
+#### Plugins
+
+- **Response Transformer**: fix an issue that plugin does not transform the response body while upstream returns a Content-Type with +json suffix at subtype.
+  [#10656](https://github.com/Kong/kong/pull/10656)
+- **grpc-gateway**: Fixed an issue that empty (all default value) messages can not be unframed correctly.
+  [#10836](https://github.com/Kong/kong/pull/10836)
+- **ACME**: Fixed sanity test can't work with "kong" storage in Hybrid mode
+  [#10852](https://github.com/Kong/kong/pull/10852)
+- **rate-limiting**: Fixed an issue that impact the accuracy with the `redis` policy.
+  Thanks [@giovanibrioni](https://github.com/giovanibrioni) for contributing this change.
+  [#10559](https://github.com/Kong/kong/pull/10559)
+- **Zipkin**: Fixed an issue that traces not being generated correctly when instrumentations are enabled.
+  [#10983](https://github.com/Kong/kong/pull/10983)
+- **Acme**: Fixed string concatenation on cert renewal errors
+  [#11364](https://github.com/Kong/kong/pull/11364)
+- Validation for queue related parameters has been
+  improved. `max_batch_size`, `max_entries` and `max_bytes` are now
+  `integer`s instead of `number`s.  `initial_retry_delay` and
+  `max_retry_delay` must now be `number`s greater than 0.001
+  (seconds).
+  [#10840](https://github.com/Kong/kong/pull/10840)
+
+### Changed
+
+#### Core
+
+- Tracing: new attribute `http.route` added to http request spans.
+  [#10981](https://github.com/Kong/kong/pull/10981)
+- The default value of `lmdb_map_size` config has been bumped to `2048m`
+  from `128m` to accommodate most commonly deployed config sizes in DB-less
+  and Hybrid mode.
+  [#11047](https://github.com/Kong/kong/pull/11047)
+- The default value of `cluster_max_payload` config has been bumped to `16m`
+  from `4m` to accommodate most commonly deployed config sizes in Hybrid mode.
+  [#11090](https://github.com/Kong/kong/pull/11090)
+- Remove kong branding from kong HTML error template.
+  [#11150](https://github.com/Kong/kong/pull/11150)
+- Drop luasocket in cli
+  [#11177](https://github.com/Kong/kong/pull/11177)
+
+#### Status API
+
+- Remove the database information from the status API when operating in dbless
+  mode or data plane.
+  [#10995](https://github.com/Kong/kong/pull/10995)
 
 ### Dependencies
 
-- Bumped lua-resty-openssl from 0.8.20 to 0.8.22
+- Bumped lua-resty-openssl from 0.8.20 to 0.8.23
   [#10837](https://github.com/Kong/kong/pull/10837)
+  [#11099](https://github.com/Kong/kong/pull/11099)
+- Bumped kong-lapis from 1.8.3.1 to 1.14.0.2
+  [#10841](https://github.com/Kong/kong/pull/10841)
+- Bumped lua-resty-events from 0.1.4 to 0.2.0
+  [#10883](https://github.com/Kong/kong/pull/10883)
+  [#11083](https://github.com/Kong/kong/pull/11083)
+  [#11214](https://github.com/Kong/kong/pull/11214)
+- Bumped lua-resty-session from 4.0.3 to 4.0.4
+  [#11011](https://github.com/Kong/kong/pull/11011)
+- Bumped OpenSSL from 1.1.1t to 3.1.1
+  [#10180](https://github.com/Kong/kong/pull/10180)
+  [#11140](https://github.com/Kong/kong/pull/11140)
+- Bumped pgmoon from 1.16.0 to 1.16.2 (Kong's fork)
+  [#11181](https://github.com/Kong/kong/pull/11181)
+  [#11229](https://github.com/Kong/kong/pull/11229)
+- Bumped atc-router from 1.0.5 to 1.2.0
+  [#10100](https://github.com/Kong/kong/pull/10100)
+  [#11071](https://github.com/Kong/kong/pull/11071)
+- Bumped lua-resty-lmdb from 1.1.0 to 1.3.0
+  [#11227](https://github.com/Kong/kong/pull/11227)
+- Bumped lua-ffi-zlib from 0.5 to 0.6
+  [#11373](https://github.com/Kong/kong/pull/11373)
+
+### Known Issues
+- Some referenceable configuration fields, such as the `http_endpoint` field
+  of the `http-log` plugin and the `endpoint` field of the `opentelemetry` plugin,
+  do not accept reference values due to incorrect field validation.
 
 ## 3.3.0
 
@@ -21,10 +2088,10 @@
 
 #### Core
 
-- The `traditional_compat` router mode has been made more compatible with the
+- The `traditional_compatible` router mode has been made more compatible with the
   behavior of `traditional` mode by splitting routes with multiple paths into
   multiple atc routes with separate priorities.  Since the introduction of the new
-  router in Kong Gateway 3.0, `traditional_compat` mode assigned only one priority
+  router in Kong Gateway 3.0, `traditional_compatible` mode assigned only one priority
   to each route, even if different prefix path lengths and regular expressions
   were mixed in a route. This was not how multiple paths were handled in the
   `traditional` router and the behavior has now been changed so that a separate
@@ -36,9 +2103,12 @@
 - **http-log, statsd, opentelemetry, datadog**: The queueing system
   has been reworked, causing some plugin parameters to not function as expected
   anymore. If you use queues on these plugin, new parameters must be configured.
-  The module `kong.tools.batch_queue` has been renamed to `kong.tools.batch` in
+  The module `kong.tools.batch_queue` has been renamed to `kong.tools.queue` in
   the process and the API was changed.  If your custom plugin uses queues, it must
   be updated to use the new API.
+  See
+  [this blog post](https://konghq.com/blog/product-releases/reworked-plugin-queues-in-kong-gateway-3-3)
+  for a tour of the new queues and how they are parametrized.
   [#10172](https://github.com/Kong/kong/pull/10172)
 - **http-log**: If the log server responds with a 3xx HTTP status code, the
   plugin will consider it to be an error and retry according to the retry
@@ -56,6 +2126,8 @@
 - Tracing: tracing_sampling_rate defaults to 0.01 (trace one of every 100 requests) instead of the previous 1
   (trace all requests). Tracing all requests is inappropriate for most production systems
   [#10774](https://github.com/Kong/kong/pull/10774)
+- **Proxy Cache**: Add option to remove the proxy cache headers from the response
+  [#10445](https://github.com/Kong/kong/pull/10445)
 
 ### Additions
 
@@ -82,8 +2154,8 @@
   [#10385](https://github.com/Kong/kong/pull/10385)
 - Request and response buffering options are now enabled for incoming HTTP 2.0 requests too.
   Thanks [@PidgeyBE](https://github.com/PidgeyBE) for contributing this change.
-  [#10204](https://github.com/Kong/kong/pull/10204)
   [#10595](https://github.com/Kong/kong/pull/10595)
+  [#10204](https://github.com/Kong/kong/pull/10204)
 - Add `KONG_UPSTREAM_DNS_TIME` to `kong.ctx` so that we can record the time it takes for DNS
   resolution when Kong proxies to upstream.
   [#10355](https://github.com/Kong/kong/pull/10355)
@@ -92,6 +2164,7 @@
 - Support timeout for dynamic log level
   [#10288](https://github.com/Kong/kong/pull/10288)
 - Added new span attribute `http.client_ip` to capture the client IP when behind a proxy.
+  Thanks [@backjo](https://github.com/backjo) for this contribution!
   [#10723](https://github.com/Kong/kong/pull/10723)
 
 #### Admin API
@@ -511,6 +2584,9 @@ now encoded as `"[]"` to comply with standard.
   [#9611](https://github.com/Kong/kong/pull/9611)
 - **HTTP-Log**: Support `http_endpoint` field to be referenceable
   [#9714](https://github.com/Kong/kong/pull/9714)
+- **rate-limiting**: Add a new configuration `sync_rate` to the `redis` policy,
+  which synchronizes metrics to redis periodically instead of on every request.
+  [#9538](https://github.com/Kong/kong/pull/9538)
 
 
 #### Hybrid Mode
@@ -886,7 +2962,7 @@ configuration changes are needed when upgrading.
   use that before upgrading.
   [#8898](https://github.com/Kong/kong/pull/8898)
 - We bumped the version number (`_format_version`) of declarative configuration to "3.0" because of changes on `route.path`.
-  Declarative configuration with older version shoudl be upgraded to "3.0" on the fly.
+  Declarative configuration with older version should be upgraded to "3.0" on the fly.
   [#9078](https://github.com/Kong/kong/pull/9078)
 
 #### Migrations

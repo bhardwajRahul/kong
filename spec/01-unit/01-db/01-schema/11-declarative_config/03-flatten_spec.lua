@@ -3,7 +3,7 @@ local helpers = require "spec.helpers"
 local lyaml = require "lyaml"
 local cjson = require "cjson"
 local tablex = require "pl.tablex"
-local utils = require "kong.tools.utils"
+local uuid = require "kong.tools.uuid"
 
 local null = ngx.null
 
@@ -48,7 +48,7 @@ local function idempotent(tbl, err)
   local function recurse_fields(t)
     helpers.deep_sort(t)
     for k,v in sortedpairs(t) do
-      if k == "id" and utils.is_valid_uuid(v) then
+      if k == "id" and uuid.is_valid_uuid(v) then
         t[k] = "UUID"
       end
       if k == "client_id" or k == "client_secret" or k == "access_token" then
@@ -302,6 +302,7 @@ describe("declarative config: flatten", function()
                   max_retry_delay = 60,
                   max_retry_time = 60,
                   max_bytes = null,
+                  concurrency_limit = 1,
                 },
               }
             },
@@ -320,6 +321,7 @@ describe("declarative config: flatten", function()
               config = {
                 anonymous = null,
                 hide_credentials = false,
+                realm = null,
                 key_in_header = true,
                 key_in_query = true,
                 key_in_body = false,
@@ -408,6 +410,7 @@ describe("declarative config: flatten", function()
                   max_retry_delay = 60,
                   max_retry_time = 60,
                   max_bytes = null,
+                  concurrency_limit = 1,
                 },
               },
               consumer = {
@@ -430,6 +433,7 @@ describe("declarative config: flatten", function()
               config = {
                 anonymous = null,
                 hide_credentials = false,
+                realm = null,
                 key_in_header = true,
                 key_in_query = true,
                 key_in_body = false,
@@ -573,7 +577,8 @@ describe("declarative config: flatten", function()
             plugins = { {
                 config = {
                   anonymous = null,
-                  hide_credentials = false
+                  hide_credentials = false,
+                  realm = "service"
                 },
                 consumer = null,
                 created_at = 1234567890,
@@ -608,7 +613,8 @@ describe("declarative config: flatten", function()
                     max_retry_delay = 60,
                     max_retry_time = 60,
                     max_bytes = null,
-                  }
+                    concurrency_limit = 1,
+                  },
                 },
                 consumer = null,
                 created_at = 1234567890,
@@ -627,6 +633,7 @@ describe("declarative config: flatten", function()
                 config = {
                   anonymous = null,
                   hide_credentials = false,
+                  realm = null,
                   key_in_header = true,
                   key_in_query = true,
                   key_in_body = false,
@@ -1088,7 +1095,8 @@ describe("declarative config: flatten", function()
             plugins = { {
                 config = {
                   anonymous = null,
-                  hide_credentials = false
+                  hide_credentials = false,
+                  realm = "service"
                 },
                 consumer = null,
                 created_at = 1234567890,
@@ -1123,6 +1131,7 @@ describe("declarative config: flatten", function()
                     max_retry_delay = 60,
                     max_retry_time = 60,
                     max_bytes = null,
+                    concurrency_limit = 1,
                   },
                 },
                 consumer = null,
@@ -1142,6 +1151,7 @@ describe("declarative config: flatten", function()
                 config = {
                   anonymous = null,
                   hide_credentials = false,
+                  realm = null,
                   key_in_header = true,
                   key_in_query = true,
                   key_in_body = false,
@@ -1763,7 +1773,7 @@ describe("declarative config: flatten", function()
               - username: foo
             jwt_secrets:
               - consumer: foo
-                key: "https://keycloak/auth/realms/foo"
+                key: "https://keycloak/realms/foo"
                 algorithm: RS256
                 rsa_public_key: "]] .. key .. [["
           ]]))
@@ -1786,7 +1796,7 @@ describe("declarative config: flatten", function()
                 },
                 created_at = 1234567890,
                 id = "UUID",
-                key = "https://keycloak/auth/realms/foo",
+                key = "https://keycloak/realms/foo",
                 rsa_public_key = key:gsub("\\n", "\n"),
                 tags = null,
               } }

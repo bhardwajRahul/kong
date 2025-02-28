@@ -1,5 +1,6 @@
 local helpers = require("spec.helpers")
 local cjson = require("cjson")
+local fmt = string.format
 
 local strategies = {}
 for _, strategy in helpers.each_strategy() do
@@ -8,16 +9,20 @@ end
 table.insert(strategies, "off")
 for _, strategy in pairs(strategies) do
 describe("Admin API - Kong debug route with strategy #" .. strategy, function()
+  local https_server
   lazy_setup(function()
     local bp = helpers.get_db_utils(nil, {}) -- runs migrations
 
+    local mock_https_server_port = helpers.get_available_port()
+
     local service_mockbin = assert(bp.services:insert {
       name     = "service-mockbin",
-      url      = "https://mockbin.com/request",
+      url      = fmt("https://127.0.0.1:%s/request", mock_https_server_port)
     })
+
     assert(bp.routes:insert {
       protocols     = { "http" },
-      hosts         = { "mockbin.com" },
+      hosts         = { "mockbin.test" },
       paths         = { "/" },
       service       = service_mockbin,
     })
@@ -26,18 +31,21 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
       service = service_mockbin,
     })
 
+    https_server = helpers.https_server.new(mock_https_server_port, nil, "https")
+    https_server:start()
+
     assert(helpers.start_kong {
       database = strategy,
-      db_update_propagation = strategy == "cassandra" and 1 or 0,
       trusted_ips = "127.0.0.1",
       nginx_http_proxy_ssl_verify = "on",
+      -- Mocking https_server is using kong_spec key/cert pairs but the pairs does not
+      -- have domain defined, so ssl verify will still fail with domain mismatch
       nginx_http_proxy_ssl_trusted_certificate = "../spec/fixtures/kong_spec.crt",
       nginx_http_proxy_ssl_verify_depth = "5",
     })
     assert(helpers.start_kong{
       database = strategy,
       prefix = "node2",
-      db_update_propagation = strategy == "cassandra" and 1 or 0,
       admin_listen = "127.0.0.1:9110",
       admin_gui_listen = "off",
       proxy_listen = "off",
@@ -74,6 +82,7 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
   end)
 
   lazy_teardown(function()
+    https_server:shutdown()
     helpers.stop_kong()
     helpers.stop_kong("node2")
 
@@ -139,14 +148,13 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
         method  = "GET",
         path    = "/",
         headers = {
-          Host  = "mockbin.com",
+          Host  = "mockbin.test",
         },
       })
       body = assert.res_status(502, res)
-      assert.equal("An invalid response was received from the upstream server", body)
-      assert.logfile().has.no.line("upstream SSL certificate verify error: " ..
-      "(20:unable to get local issuer certificate) " ..
-      "while SSL handshaking to upstream", true, 2)
+      assert.matches("An invalid response was received from the upstream server", body)
+      assert.logfile().has.no.line([[upstream SSL certificate does not match]] ..
+        [[ "127.0.0.1" while SSL handshaking to upstream]], true, 2)
 
       -- e2e test: we are not printing lower than alert
       helpers.clean_logfile()
@@ -154,7 +162,7 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
         method  = "GET",
         path    = "/",
         headers = {
-          Host  = "mockbin.com",
+          Host  = "mockbin.test",
         },
       })
       assert.res_status(502, res)
@@ -183,20 +191,7 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
         return json.message == message
       end, 30)
 
-      -- e2e test: we are printing higher than debug
-      helpers.clean_logfile()
-      res = assert(helpers.proxy_client():send {
-        method  = "GET",
-        path    = "/",
-        headers = {
-          Host  = "mockbin.com",
-        },
-      })
-      body = assert.res_status(502, res)
-      assert.equal("An invalid response was received from the upstream server", body)
-      assert.logfile().has.line("upstream SSL certificate verify error: " ..
-      "(20:unable to get local issuer certificate) " ..
-      "while SSL handshaking to upstream", true, 30)
+      assert.logfile().has.line(fmt("log level changed to %s", ngx.DEBUG), true, 2)
 
       -- e2e test: we are printing higher than debug
       helpers.clean_logfile()
@@ -204,7 +199,21 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
         method  = "GET",
         path    = "/",
         headers = {
-          Host  = "mockbin.com",
+          Host  = "mockbin.test",
+        },
+      })
+      body = assert.res_status(502, res)
+      assert.matches("An invalid response was received from the upstream server", body)
+      assert.logfile().has.line([[upstream SSL certificate does not match]] ..
+        [[ "127.0.0.1" while SSL handshaking to upstream]], true, 2)
+
+      -- e2e test: we are printing higher than debug
+      helpers.clean_logfile()
+      res = assert(helpers.proxy_client():send {
+        method  = "GET",
+        path    = "/",
+        headers = {
+          Host  = "mockbin.test",
         },
       })
       assert.res_status(502, res)
@@ -511,7 +520,7 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
       end, 3)
 
       local prefix = helpers.test_conf.prefix
-      assert(helpers.reload_kong(strategy, "reload --prefix " .. prefix))
+      assert(helpers.reload_kong("reload --prefix " .. prefix))
 
       -- Wait for new workers to spawn
       helpers.pwait_until(function()
@@ -569,14 +578,13 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
         method  = "GET",
         path    = "/",
         headers = {
-          Host  = "mockbin.com",
+          Host  = "mockbin.test",
         },
       })
       body = assert.res_status(502, res)
-      assert.equal("An invalid response was received from the upstream server", body)
-      assert.logfile().has.no.line("upstream SSL certificate verify error: " ..
-      "(20:unable to get local issuer certificate) " ..
-      "while SSL handshaking to upstream", true, 2)
+      assert.matches("An invalid response was received from the upstream server", body)
+      assert.logfile().has.no.line([[upstream SSL certificate does not match]] ..
+        [[ "127.0.0.1" while SSL handshaking to upstream]], true, 2)
 
       -- e2e test: we are not printing lower than alert
       helpers.clean_logfile()
@@ -584,7 +592,7 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
         method  = "GET",
         path    = "/",
         headers = {
-          Host  = "mockbin.com",
+          Host  = "mockbin.test",
         },
       })
       assert.res_status(502, res)
@@ -609,14 +617,13 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
         method  = "GET",
         path    = "/",
         headers = {
-          Host  = "mockbin.com",
+          Host  = "mockbin.test",
         },
       })
       body = assert.res_status(502, res)
-      assert.equal("An invalid response was received from the upstream server", body)
-      assert.logfile().has.line("upstream SSL certificate verify error: " ..
-      "(20:unable to get local issuer certificate) " ..
-      "while SSL handshaking to upstream", true, 30)
+      assert.matches("An invalid response was received from the upstream server", body)
+      assert.logfile().has.line([[upstream SSL certificate does not match]] ..
+        [[ "127.0.0.1" while SSL handshaking to upstream]], true, 2)
 
       -- e2e test: we are printing higher than debug
       helpers.clean_logfile()
@@ -624,7 +631,7 @@ describe("Admin API - Kong debug route with strategy #" .. strategy, function()
         method  = "GET",
         path    = "/",
         headers = {
-          Host  = "mockbin.com",
+          Host  = "mockbin.test",
         },
       })
       assert.res_status(502, res)

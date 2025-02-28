@@ -1,5 +1,5 @@
-ARG KONG_BASE_IMAGE=redhat/ubi8
-FROM $KONG_BASE_IMAGE
+ARG KONG_BASE_IMAGE=redhat/ubi9
+FROM --platform=$TARGETPLATFORM $KONG_BASE_IMAGE
 
 LABEL maintainer="Kong Docker Maintainers <docker@konghq.com> (@team-gateway-bot)"
 
@@ -18,7 +18,7 @@ LABEL name="Kong" \
 # RedHat required LICENSE file approved path
 COPY LICENSE /licenses/
 
-ARG RPM_PLATFORM=el8
+ARG RPM_PLATFORM=el9
 
 ARG KONG_PREFIX=/usr/local/kong
 ENV KONG_PREFIX $KONG_PREFIX
@@ -28,12 +28,12 @@ ARG EE_PORTS
 ARG TARGETARCH
 
 ARG KONG_ARTIFACT=kong.${RPM_PLATFORM}.${TARGETARCH}.rpm
-ARG KONG_ARTIFACT_PATH=
-COPY ${KONG_ARTIFACT_PATH}${KONG_ARTIFACT} /tmp/kong.rpm
+ARG KONG_ARTIFACT_PATH
 
 # hadolint ignore=DL3015
-RUN yum install -y /tmp/kong.rpm \
-    && rm /tmp/kong.rpm \
+RUN --mount=type=bind,source=${KONG_ARTIFACT_PATH},target=/tmp/pkg \
+    yum update -y \
+    && yum install -y /tmp/pkg/${KONG_ARTIFACT} \
     && chown kong:0 /usr/local/bin/kong \
     && chown -R kong:0 /usr/local/kong \
     && ln -sf /usr/local/openresty/bin/resty /usr/local/bin/resty \

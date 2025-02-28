@@ -1,14 +1,15 @@
 local Queue = require "kong.tools.queue"
-local utils = require "kong.tools.utils"
+local cycle_aware_deep_copy = require("kong.tools.table").cycle_aware_deep_copy
 local helpers = require "spec.helpers"
 local mocker = require "spec.fixtures.mocker"
 local timerng = require "resty.timerng"
 local queue_schema = require "kong.tools.queue_schema"
+local uuid = require("kong.tools.uuid").uuid
 local queue_num = 1
 
 
 local function queue_conf(conf)
-  local defaulted_conf = utils.deep_copy(conf)
+  local defaulted_conf = cycle_aware_deep_copy(conf)
   if not conf.name then
     defaulted_conf.name = "test-" .. tostring(queue_num)
     queue_num = queue_num + 1
@@ -64,13 +65,14 @@ describe("plugin queue", function()
     end, {
       kong = {
         log = {
+          trace = function(message) return log('DEBUG', message) end,
           debug = function(message) return log('DEBUG', message) end,
           info = function(message) return log('INFO', message) end,
           warn = function(message) return log('WARN', message) end,
           err = function(message) return log('ERR', message) end,
         },
         plugin = {
-          get_id = function () return utils.uuid() end,
+          get_id = function () return uuid() end,
         },
       },
       ngx = {
@@ -88,7 +90,12 @@ describe("plugin queue", function()
           else
             return real_now()
           end
-        end
+        end,
+        worker = {
+          exiting = function()
+            return false
+          end
+        }
       }
     })
   end)
@@ -122,10 +129,10 @@ describe("plugin queue", function()
 
   it("displays log_tag in log entries", function ()
     local handler_invoked
-    local log_tag = utils.uuid()
+    local log_tag = uuid()
     Queue.enqueue(
       queue_conf({ name = "log-tag", log_tag = log_tag }),
-      function (conf)
+      function ()
         handler_invoked = true
         return true
       end,
@@ -230,6 +237,40 @@ describe("plugin queue", function()
     assert.equals("Five", last_entry)
   end)
 
+  it("batches messages during shutdown", function()
+    _G.ngx.worker.exiting = function()
+      return true
+    end
+    local process_count = 0
+    local first_entry, last_entry
+    local function enqueue(entry)
+      Queue.enqueue(
+        queue_conf({
+          name = "batch",
+          max_batch_size = 2,
+          max_coalescing_delay = 0.1,
+        }),
+        function(_, batch)
+          first_entry = first_entry or batch[1]
+          last_entry = batch[#batch]
+          process_count = process_count + 1
+          return true
+        end,
+        nil,
+        entry
+      )
+    end
+    enqueue("One")
+    enqueue("Two")
+    enqueue("Three")
+    enqueue("Four")
+    enqueue("Five")
+    wait_until_queue_done("batch")
+    assert.equals(3, process_count)
+    assert.equals("One", first_entry)
+    assert.equals("Five", last_entry)
+  end)
+
   it("observes the `max_coalescing_delay` parameter", function()
     local process_count = 0
     local first_entry, last_entry
@@ -282,22 +323,60 @@ describe("plugin queue", function()
   end)
 
   it("gives up sending after retrying", function()
-    Queue.enqueue(
-      queue_conf({
-        name = "retry-give-up",
-        max_batch_size = 1,
-        max_retry_time = 1,
-        max_coalescing_delay = 0.1,
-      }),
-      function()
-        return false, "FAIL FAIL FAIL"
-      end,
-      nil,
-      "Hello"
-    )
+    local function enqueue(entry)
+      Queue.enqueue(
+        queue_conf({
+          name = "retry-give-up",
+          max_batch_size = 1,
+          max_retry_time = 1,
+          max_coalescing_delay = 0.1,
+        }),
+        function()
+          return false, "FAIL FAIL FAIL"
+        end,
+        nil,
+        entry
+      )
+    end
+
+    enqueue("Hello")
+    enqueue("another value")
     wait_until_queue_done("retry-give-up")
     assert.match_re(log_messages, 'WARN .* handler could not process entries: FAIL FAIL FAIL')
     assert.match_re(log_messages, 'ERR .*1 queue entries were lost')
+  end)
+
+  it("warns when queue reaches its capacity limit", function()
+    local capacity = 100
+    local function enqueue(entry)
+      Queue.enqueue(
+        queue_conf({
+          name = "capacity-warning",
+          max_batch_size = 1,
+          max_entries = capacity,
+          max_coalescing_delay = 0.1,
+        }),
+        function()
+          return false
+        end,
+        nil,
+        entry
+      )
+    end
+    for _ = 1, math.floor(capacity * Queue._CAPACITY_WARNING_THRESHOLD) - 1 do
+      enqueue("something")
+    end
+    assert.has.no.match_re(log_messages, "WARN .*queue at \\d*% capacity")
+    enqueue("something")
+    enqueue("something")
+    assert.match_re(log_messages, "WARN .*queue at \\d*% capacity")
+    log_messages = ""
+    enqueue("something")
+    assert.has.no.match_re(
+      log_messages,
+      "WARN .*queue at \\d*% capacity",
+      "the capacity warning should not be logged more than once"
+    )
   end)
 
   it("drops entries when queue reaches its capacity", function()
@@ -331,6 +410,41 @@ describe("plugin queue", function()
     wait_until_queue_done("capacity-exceeded")
     assert.equal("Six", processed[1])
     assert.match_re(log_messages, "INFO .*queue resumed processing")
+  end)
+
+  it("queue does not fail for max batch size = max entries", function()
+    local fail_process = true
+    local function enqueue(entry)
+      Queue.enqueue(
+        queue_conf({
+          name = "capacity-exceeded",
+          max_batch_size = 2,
+          max_entries = 2,
+          max_coalescing_delay = 0.1,
+        }),
+        function(_, batch)
+          ngx.sleep(1)
+          if fail_process then
+            return false, "FAIL FAIL FAIL"
+          end
+          return true
+        end,
+        nil,
+        entry
+      )
+    end
+    -- enqueue 2 entries, enough for first batch
+    for i = 1, 2 do
+      enqueue("initial batch: " .. tostring(i))
+    end
+    -- wait for max_coalescing_delay such that the first batch is processed (and will be stuck in retry loop, as our handler always fails)
+    ngx.sleep(0.1)
+    -- fill in some more entries
+    for i = 1, 2 do
+      enqueue("fill up: " .. tostring(i))
+    end
+    fail_process = false
+    wait_until_queue_done("capacity-exceeded")
   end)
 
   it("drops entries when it reaches its max_bytes", function()
@@ -642,5 +756,125 @@ describe("plugin queue", function()
     local converted_parameters = Queue.get_plugin_params("someplugin", legacy_parameters)
     assert.equals(123, converted_parameters.max_batch_size)
     assert.equals(234, converted_parameters.max_coalescing_delay)
+  end)
+
+  it("continue processing after hard error in handler", function()
+    local processed = {}
+    local function enqueue(entry)
+      Queue.enqueue(
+        queue_conf({
+          name = "continue-processing",
+          max_batch_size = 1,
+          max_entries = 5,
+          max_coalescing_delay = 0.1,
+          max_retry_time = 3,
+        }),
+        function(_, batch)
+          if batch[1] == "Two" then
+            error("hard error")
+          end
+          table.insert(processed, batch[1])
+          return true
+        end,
+        nil,
+        entry
+      )
+    end
+    enqueue("One")
+    enqueue("Two")
+    enqueue("Three")
+    wait_until_queue_done("continue-processing")
+    assert.equal("One", processed[1])
+    assert.equal("Three", processed[2])
+    assert.match_re(log_messages, 'WARN \\[\\] queue continue-processing: handler could not process entries: .*: hard error')
+    assert.match_re(log_messages, 'ERR \\[\\] queue continue-processing: could not send entries due to max_retry_time exceeded. \\d queue entries were lost')
+  end)
+
+  it("sanity check for function Queue.is_full() & Queue.can_enqueue()", function()
+    local queue_conf = {
+      name = "queue-full-checking-too-many-entries",
+      max_batch_size = 99999, -- avoiding automatically flushing,
+      max_entries = 2,
+      max_bytes = nil, -- avoiding bytes limit
+      max_coalescing_delay = 99999, -- avoiding automatically flushing,
+      max_retry_time = 60,
+      initial_retry_delay = 1,
+      max_retry_delay = 60,
+      concurrency_limit = 1,
+    }
+
+    local function enqueue(queue_conf, entry)
+      Queue.enqueue(
+        queue_conf,
+        function()
+          return true
+        end,
+        nil,
+        entry
+      )
+    end
+
+    -- should be true if the queue does not exist
+    assert.is_true(Queue.can_enqueue(queue_conf))
+
+    assert.is_false(Queue.is_full(queue_conf))
+    assert.is_true(Queue.can_enqueue(queue_conf, "One"))
+    enqueue(queue_conf, "One")
+    assert.is_false(Queue.is_full(queue_conf))
+
+    assert.is_true(Queue.can_enqueue(queue_conf, "Two"))
+    enqueue(queue_conf, "Two")
+    assert.is_true(Queue.is_full(queue_conf))
+
+    assert.is_false(Queue.can_enqueue(queue_conf, "Three"))
+
+
+    queue_conf = {
+      name = "queue-full-checking-too-many-bytes",
+      max_batch_size = 99999, -- avoiding automatically flushing,
+      max_entries = 99999, -- big enough to avoid entries limit
+      max_bytes = 2,
+      max_coalescing_delay = 99999, -- avoiding automatically flushing,
+      max_retry_time = 60,
+      initial_retry_delay = 1,
+      max_retry_delay = 60,
+      concurrency_limit = 1,
+    }
+
+    -- should be true if the queue does not exist
+    assert.is_true(Queue.can_enqueue(queue_conf))
+
+    assert.is_false(Queue.is_full(queue_conf))
+    assert.is_true(Queue.can_enqueue(queue_conf, "1"))
+    enqueue(queue_conf, "1")
+    assert.is_false(Queue.is_full(queue_conf))
+
+    assert.is_true(Queue.can_enqueue(queue_conf, "2"))
+    enqueue(queue_conf, "2")
+    assert.is_true(Queue.is_full(queue_conf))
+
+    assert.is_false(Queue.can_enqueue(queue_conf, "3"))
+
+    queue_conf = {
+      name = "queue-full-checking-too-large-entry",
+      max_batch_size = 99999, -- avoiding automatically flushing,
+      max_entries = 99999, -- big enough to avoid entries limit
+      max_bytes = 3,
+      max_coalescing_delay = 99999, -- avoiding automatically flushing,
+      max_retry_time = 60,
+      initial_retry_delay = 1,
+      max_retry_delay = 60,
+      concurrency_limit = 1,
+    }
+
+    -- should be true if the queue does not exist
+    assert.is_true(Queue.can_enqueue(queue_conf))
+
+    enqueue(queue_conf, "1")
+
+    assert.is_false(Queue.is_full(queue_conf))
+    assert.is_true(Queue.can_enqueue(queue_conf, "1"))
+    assert.is_true(Queue.can_enqueue(queue_conf, "11"))
+    assert.is_false(Queue.can_enqueue(queue_conf, "111"))
   end)
 end)

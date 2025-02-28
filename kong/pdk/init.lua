@@ -32,7 +32,7 @@
 --
 -- @field kong.version_num
 -- @usage
--- if kong.version_num < 13000 then -- 000.130.00 -> 0.13.0
+-- if kong.version_num < 3004001 then -- 300.40.1 -> 3.4.1
 --   -- no support for Routes & Services
 -- end
 
@@ -101,10 +101,6 @@
 --- Nginx module
 -- @field kong.nginx
 -- @redirect kong.nginx
-
-
---- Singletons
--- @section singletons
 
 
 ---
@@ -185,7 +181,7 @@
 
 assert(package.loaded["resty.core"])
 
-local base = require "resty.core.base"
+local get_request = require("resty.core.base").get_request
 
 local type = type
 local error = error
@@ -212,6 +208,7 @@ local MAJOR_MODULES = {
       "vault",
       "tracing",
       "plugin",
+      "telemetry",
 }
 
 if ngx.config.subsystem == 'http' then
@@ -274,7 +271,7 @@ function _PDK.new(kong_config, self)
   return setmetatable(self, {
     __index = function(t, k)
       if k == "log" then
-        if base.get_request() then
+        if get_request() then
           local log = ngx.ctx.KONG_LOG
           if log then
             return log

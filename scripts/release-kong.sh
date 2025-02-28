@@ -8,11 +8,10 @@ source .requirements
 KONG_VERSION=$(bash scripts/grep-kong-version.sh)
 KONG_RELEASE_LABEL=${KONG_RELEASE_LABEL:-$KONG_VERSION}
 
-PULP_HOST=${PULP_HOST:-"https://api.download-dev.konghq.com"}
-PULP_USERNAME=${PULP_USERNAME:-"admin"}
-PULP_PASSWORD=${PULP_PASSWORD:-}
+# allow package name (from .requirements) to be overridden by ENV
+KONG_PACKAGE_NAME="${KONG_PACKAGE_NAME_OVERRIDE:-${KONG_PACKAGE_NAME}}"
 
-PULP_DOCKER_IMAGE="kong/release-script"
+RELEASE_SCRIPT_DOCKER_IMAGE="kong/release-script"
 
 # Variables used by the release script
 ARCHITECTURE=${ARCHITECTURE:-amd64}
@@ -65,9 +64,6 @@ case "$ARTIFACT_TYPE" in
   debian|ubuntu)
     OUTPUT_FILE_SUFFIX=".$ARTIFACT_VERSION.$ARCHITECTURE.deb"
     ;;
-  centos)
-    OUTPUT_FILE_SUFFIX=".el$ARTIFACT_VERSION.$ARCHITECTURE.rpm"
-    ;;
   rhel)
     OUTPUT_FILE_SUFFIX=".rhel$ARTIFACT_VERSION.$ARCHITECTURE.rpm"
     ;;
@@ -91,10 +87,6 @@ function push_package () {
 
   # TODO: CE gateway-src
 
-  if [ "$ARTIFACT_TYPE" == "alpine" ]; then
-    dist_version=
-  fi
-
   if [ "$ARTIFACT_VERSION" == "18.04" ]; then
     dist_version="--dist-version bionic"
   fi
@@ -104,27 +96,46 @@ function push_package () {
   if [ "$ARTIFACT_VERSION" == "22.04" ]; then
     dist_version="--dist-version jammy"
   fi
+  if [ "$ARTIFACT_VERSION" == "24.04" ]; then
+    dist_version="--dist-version noble"
+  fi
+
+  # test for sanitized github actions input
+  if [[ -n "$(echo "$PACKAGE_TAGS" | tr -d 'a-zA-Z0-9._,')" ]]; then
+    echo 'invalid characters in PACKAGE_TAGS'
+    echo "passed to script: ${PACKAGE_TAGS}"
+    tags=''
+  else
+    tags="$PACKAGE_TAGS"
+  fi
 
   set -x
+  release_args=''
 
-  local release_args="--package-type gateway"
+  if [ -n "${tags:-}" ]; then
+    release_args="${release_args} --tags ${tags}"
+  fi
+
+  release_args="${release_args} --package-type gateway"
   if [[ "$EDITION" == "enterprise" ]]; then
-    release_args="$release_args --enterprise"
+    release_args="${release_args} --enterprise"
   fi
 
   # pre-releases go to `/internal/`
   if [[ "$OFFICIAL_RELEASE" == "true" ]]; then
-    release_args="$release_args --publish"
+    release_args="${release_args} --publish"
   else
-    release_args="$release_args --internal"
+    release_args="${release_args} --internal"
   fi
 
   docker run \
-    -e PULP_HOST="$PULP_HOST" \
-    -e PULP_USERNAME="$PULP_USERNAME" \
-    -e PULP_PASSWORD="$PULP_PASSWORD" \
+    -e VERBOSE \
+    -e CLOUDSMITH_API_KEY \
+    -e CLOUDSMITH_DRY_RUN \
+    -e IGNORE_CLOUDSMITH_FAILURES \
+    -e USE_CLOUDSMITH \
     -v "$(pwd)/$KONG_ARTIFACT:/files/$DIST_FILE" \
-    -i $PULP_DOCKER_IMAGE \
+    -i $RELEASE_SCRIPT_DOCKER_IMAGE \
           --file "/files/$DIST_FILE" \
           --dist-name "$ARTIFACT_TYPE" $dist_version \
           --major-version "${KONG_VERSION%%.*}.x" \

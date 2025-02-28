@@ -10,7 +10,6 @@ local dns_client = require "kong.resty.dns.client"
 local upstreams = require "kong.runloop.balancer.upstreams"
 local balancers = require "kong.runloop.balancer.balancers"
 local dns_utils = require "kong.resty.dns.utils"
-local utils = require "kong.tools.utils"
 
 local ngx = ngx
 local null = ngx.null
@@ -23,7 +22,7 @@ local tonumber = tonumber
 local table_sort = table.sort
 local assert = assert
 local exiting = ngx.worker.exiting
-local get_updated_now_ms = utils.get_updated_now_ms
+local get_updated_now_ms = require("kong.tools.time").get_updated_now_ms
 
 local CRIT = ngx.CRIT
 local DEBUG = ngx.DEBUG
@@ -31,8 +30,7 @@ local ERR = ngx.ERR
 local WARN = ngx.WARN
 
 local SRV_0_WEIGHT = 1      -- SRV record with weight 0 should be hit minimally, hence we replace by 1
-local EMPTY = setmetatable({},
-  {__newindex = function() error("The 'EMPTY' table is read-only") end})
+local EMPTY = require("kong.tools.table").EMPTY
 local GLOBAL_QUERY_OPTS = { workspace = null, show_ws_id = true }
 
 -- global binary heap for all balancers to share as a single update timer for
@@ -50,7 +48,7 @@ local resolve_timer_running
 local queryDns
 
 function targets_M.init()
-  dns_client = require("kong.tools.dns")(kong.configuration)    -- configure DNS client
+  dns_client = assert(package.loaded["kong.resty.dns.client"])
   if renewal_heap:size() > 0 then
     renewal_heap = require("binaryheap").minUnique()
     renewal_weak_cache = setmetatable({}, { __mode = "v" })    
@@ -169,6 +167,7 @@ function targets_M.on_target_event(operation, target)
   log(DEBUG, "target ", operation, " for upstream ", upstream_id,
     upstream_name and " (" .. upstream_name ..")" or "")
 
+  local targets_list = targets_by_upstream_id["balancer:targets:" .. upstream_id]
   targets_by_upstream_id["balancer:targets:" .. upstream_id] = nil
 
   local upstream = upstreams.get_upstream_by_id(upstream_id)
@@ -178,14 +177,27 @@ function targets_M.on_target_event(operation, target)
     return
   end
 
-  -- cancel DNS renewal
+  local function cancel_dns_renewal(target_entity)
+    local key, err = get_dns_renewal_key(target_entity)
+    if not key then
+      return false, err
+    end
+
+    renewal_weak_cache[key] = nil
+    renewal_heap:remove(key)
+    return true
+  end
+
   if operation ~= "create" then
-    local key, err = get_dns_renewal_key(target)
-    if key then
-      renewal_weak_cache[key] = nil
-      renewal_heap:remove(key)
-    else
-      log(ERR, "could not stop DNS renewal for target removed from ", upstream_id, ": ", err)
+    local ok, err
+    ok = cancel_dns_renewal(target)
+    if not ok then
+      for _, t in ipairs(targets_list) do
+        ok, err = cancel_dns_renewal(t)
+        if not ok then
+          log(ERR, "could not stop DNS renewal for target removed from ", upstream_id, ": ", err)
+        end
+      end
     end
   end
 

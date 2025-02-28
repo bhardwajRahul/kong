@@ -2,11 +2,14 @@ local constants = require("kong.constants")
 local ws_client = require("resty.websocket.client")
 local ws_server = require("resty.websocket.server")
 local parse_url = require("socket.url").parse
+local process_type = require("ngx.process").type
+local cjson = require("cjson.safe")
 
 local type = type
 local table_insert = table.insert
 local table_concat = table.concat
 local encode_base64 = ngx.encode_base64
+local unescape_uri = ngx.unescape_uri
 local worker_id = ngx.worker.id
 local fmt = string.format
 
@@ -23,15 +26,16 @@ local _log_prefix = "[clustering] "
 
 local KONG_VERSION = kong.version
 
-local prefix = kong.configuration.prefix or require("pl.path").abspath(ngx.config.prefix())
-local CLUSTER_PROXY_SSL_TERMINATOR_SOCK = fmt("unix:%s/cluster_proxy_ssl_terminator.sock", prefix)
+local CLUSTER_PROXY_SSL_TERMINATOR_SOCK = fmt("unix:%s/%s",
+                                              kong.configuration.socket_path,
+                                              constants.SOCKETS.CLUSTER_PROXY_SSL_TERMINATOR)
 
 local _M = {}
 
 
-local function parse_proxy_url(conf)
+function _M.parse_proxy_url(proxy_server)
   local ret = {}
-  local proxy_server = conf.proxy_server
+
   if proxy_server then
     -- assume proxy_server is validated in conf_loader
     local parsed = parse_url(proxy_server)
@@ -41,14 +45,14 @@ local function parse_proxy_url(conf)
       -- the connection details is statically rendered in nginx template
 
     else -- http
-      ret.proxy_url = fmt("%s://%s:%s", parsed.scheme, parsed.host, parsed.port or 443)
+      ret.proxy_url = fmt("%s://%s:%s", parsed.scheme, unescape_uri(parsed.host), parsed.port or 443)
       ret.scheme = parsed.scheme
-      ret.host = parsed.host
+      ret.host = unescape_uri(parsed.host)
       ret.port = parsed.port
     end
 
     if parsed.user and parsed.password then
-      ret.proxy_authorization = "Basic " .. encode_base64(parsed.user  .. ":" .. parsed.password)
+      ret.proxy_authorization = "Basic " .. encode_base64(unescape_uri(parsed.user)  .. ":" .. unescape_uri(parsed.password))
     end
   end
 
@@ -80,7 +84,7 @@ function _M.connect_cp(dp, endpoint, protocols)
   }
 
   if conf.cluster_use_proxy then
-    local proxy_opts = parse_proxy_url(conf)
+    local proxy_opts = _M.parse_proxy_url(conf.proxy_server)
     opts.proxy_opts = {
       wss_proxy = proxy_opts.proxy_url,
       wss_proxy_authorization = proxy_opts.proxy_authorization,
@@ -102,6 +106,7 @@ function _M.connect_cp(dp, endpoint, protocols)
 
   local ok, err = c:connect(uri, opts)
   if not ok then
+    c:close()
     return nil, uri, err
   end
 
@@ -156,7 +161,42 @@ end
 
 
 function _M.is_dp_worker_process()
+  if kong.configuration.role == "data_plane"
+      and not kong.sync -- privileged agent is only enabled when rpc sync is off
+      and kong.configuration.dedicated_config_processing == true then
+    return process_type() == "privileged agent"
+  end
+
   return worker_id() == 0
+end
+
+
+-- encode/decode json with cjson or simdjson
+local ok, simdjson_dec = pcall(require, "resty.simdjson.decoder")
+if not ok or kong.configuration.cluster_cjson then
+  _M.json_decode = cjson.decode
+  _M.json_encode = cjson.encode
+
+else
+  _M.json_decode = function(str)
+    -- enable yield and not reentrant for decode
+    local dec = simdjson_dec.new(true)
+
+    local res, err = dec:process(str)
+    dec:destroy()
+
+    return res, err
+  end
+
+  _M.json_encode = cjson.encode
+  --[[ TODO: make simdjson encoding more compatible with cjson
+  -- enable yield and reentrant for encode
+  local enc = require("resty.simdjson.encoder").new(true)
+
+  _M.json_encode = function(obj)
+    return enc:process(obj)
+  end
+  --]]
 end
 
 
