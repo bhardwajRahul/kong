@@ -64,15 +64,11 @@ def write_block_desc(desc_verb):
 
 
 class ExpectSuite():
-    def __init__(self, name, manifest,
-                 libc_max_version=None, libstdcpp_max_version=None, use_rpath=False, fips=False, extra_tests=[]):
+    def __init__(self, name, manifest, use_rpath=False, tests={}):
         self.name = name
         self.manifest = manifest
-        self.libc_max_version = libc_max_version
-        self.libstdcpp_max_version = libstdcpp_max_version
         self.use_rpath = use_rpath
-        self.fips = fips
-        self.extra_tests = extra_tests
+        self.tests = tests
 
 
 class ExpectChain():
@@ -143,22 +139,25 @@ class ExpectChain():
 
         if self._all_failures:
             self._print_error(
-                "Following failure(s) occured:\n" + "\n".join(self._all_failures))
+                "Following failure(s) occurred:\n" + "\n".join(self._all_failures))
             os._exit(1)
 
     def _compare(self, attr, fn):
         self._checks_count += 1
+        results = []
         for f in self._files:
             if not hasattr(f, attr):
                 continue  # accept missing attribute for now
             v = getattr(f, attr)
             if self._key_name and isinstance(v, dict):
-                # TODO: explict flag to accept missing key
+                # TODO: explicit flag to accept missing key
                 if self._key_name not in v:
                     return True
                 v = v[self._key_name]
-            (ok, err_template) = fn(v)
-            if ok == self._logical_reverse:
+            (r, err_template) = fn(v)
+            if r:
+                results.append(r)
+            if (not not r) == self._logical_reverse:
                 _not = "not"
                 if self._logical_reverse:
                     _not = "actually"
@@ -167,7 +166,7 @@ class ExpectChain():
                     f.relpath, attr, err_template.format(v, NOT=_not)
                 ))
                 return False
-        return True
+        return results
 
     def _exist(self):
         self._checks_count += 1
@@ -183,7 +182,9 @@ class ExpectChain():
         return self._compare(attr, lambda a: (a == expect, "'{}' does {NOT} equal to '%s'" % expect))
 
     def _match(self, attr, expect):
-        return self._compare(attr, lambda a: (re.match(expect, a), "'{}' does {NOT} match '%s'" % expect))
+        r = self._compare(attr, lambda a: (re.search(expect, a), "'{}' does {NOT} match '%s'" % expect))
+        self.last_macthes = r
+        return (not not r)
 
     def _less_than(self, attr, expect):
         def fn(a):
@@ -226,8 +227,9 @@ class ExpectChain():
             if isinstance(a, list):
                 msg = "'%s' is {NOT} found in the list" % expect
                 for e in a:
-                    if re.match(expect, e):
-                        return True, msg
+                    r = re.search(expect, e)
+                    if r:
+                        return r, msg
                 return False, msg
             else:
                 return False, "'%s' is not a list" % attr
@@ -248,8 +250,10 @@ class ExpectChain():
         self._print_title()
 
         self._path_glob = path_glob
+        if isinstance(path_glob, str):
+            self._path_glob = [path_glob]
         for f in self._infos:
-            if glob_match_ignore_slash(f.relpath, [path_glob]):
+            if glob_match_ignore_slash(f.relpath, self._path_glob):
                 self._files.append(f)
         return self
 
@@ -299,7 +303,8 @@ class ExpectChain():
         for f in self._files:
             if not hasattr(f, attr):
                 self._print_error(
-                    "\"%s\" expect \"%s\" attribute to be present, but it's not for %s" % (name, attr, f.relpath))
+                    "\"%s\" expect \"%s\" attribute to be present, but it's absent for %s (a %s)" % (
+                    name, attr, f.relpath, type(f)))
                 return dummy_call
 
         def cls(expect):
@@ -313,27 +318,26 @@ class ExpectChain():
         self._current_suite = suite
 
         if not suite.manifest:
-            self._print_error("manifest is not set for suite %s" % suite.name)
-        else:
-            diff_result = subprocess.run(
-                ['diff', "-BbNaur", suite.manifest, '-'], input=manifest, stdout=subprocess.PIPE)
-            if diff_result.returncode != 0:
-                self._print_fail("manifest is not up-to-date:")
-                if diff_result.stdout:
-                    print(diff_result.stdout.decode())
-                if diff_result.stderr:
-                    print(diff_result.stderr.decode())
+            return
+
+        diff_result = subprocess.run(
+            ['diff', "-BbNaur", suite.manifest, '-'], input=manifest, stdout=subprocess.PIPE)
+        if diff_result.returncode != 0:
+            self._print_fail("manifest is not up-to-date:")
+            if diff_result.stdout:
+                print(diff_result.stdout.decode())
+            if diff_result.stderr:
+                print(diff_result.stderr.decode())
 
     @write_block_desc("run test suite")
     def run(self, suite: ExpectSuite):
         self._current_suite = suite
 
-        suites.common_suites(self.expect, suite.fips)
-        suites.libc_libcpp_suites(
-            self.expect, suite.libc_max_version, suite.libstdcpp_max_version)
-
-        if suite.extra_tests:
-            for s in suite.extra_tests:
-                s(self.expect)
+        for s in suite.tests:
+            s(self.expect, **suite.tests[s])
 
         self._print_result()  # cleanup the lazy buffer
+
+
+    def get_last_macthes(self):
+        return self.last_macthes

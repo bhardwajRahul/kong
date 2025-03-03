@@ -1,129 +1,293 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@kong//build/openresty/wasmx/filters:variables.bzl", "WASM_FILTERS_TARGETS")
 load("@kong_bindings//:variables.bzl", "KONG_VAR")
-load("//build:build_system.bzl", "kong_directory_genrule", "kong_rules_group", "kong_template_file")
+load("//build:build_system.bzl", "get_workspace_name", "kong_genrule", "kong_install", "kong_rules_group", "kong_template_file")
 
 exports_files([
     "package/nfpm.yaml",
 ])
 
-lib_deps = [
-    "@openssl",  #TODO: select over fips (but select doesn't work in list comprehension)
+# C libraries
+
+clib_deps = [
+    "@openssl",
+    "@libexpat",
+    "@snappy",
+    "@ada",
 ]
 
-install_lib_deps_cmd = "\n".join([
-    """
-    DEP=${WORKSPACE_PATH}/$(echo $(locations %s) | awk '{print $1}')
-    # use tar magic to exclude files and create with correct permission
-    copy_with_filter ${DEP} ${BUILD_DESTDIR}/kong
-""" % dep
-    for dep in lib_deps
-])
+[
+    kong_install(
+        name = "install-%s" % get_workspace_name(k),
+        src = k,
+        # only install openssl headers
+        exclude = [] if k in ("@openssl",) else ["include"],
+        prefix = "kong/lib" if k in ("@passwdqc", "@snappy", "@ada") else "kong",
+        strip_path = "snappy" if k == "@snappy" else "ada" if k == "@ada" else "",
+    )
+    for k in clib_deps
+]
+
+kong_rules_group(
+    name = "install-clibs",
+    propagates = [
+        ":install-%s" % get_workspace_name(k)
+        for k in clib_deps
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Hermetic targets for caching
+# For local development, you could run the following command to warm up the cache:
+# bazel build //build:cacheable-targets --remote_cache=<your_local_cache_server>
+# And then run another build command with the same remote cache server to use the cache.
+# bazel build //:kong --remote_cache=<your_local_cache_server> --remote_upload_local_results=false
+# The `--remote_upload_local_results=false` flag is used to avoid uploading
+# the build results to the remote cache server, this is to avoid polluting the cache.
+kong_rules_group(
+    name = "cacheable-targets",
+    propagates = [
+        "@openssl",
+        "@libexpat",
+        "@atc_router",
+        "@simdjson_ffi",
+        "@snappy",
+        "@brotli",
+        "@pcre",
+        "@openresty",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# OpenResty
+
+kong_install(
+    name = "install-openresty-luajit",
+    src = "@openresty//:luajit",
+    prefix = "openresty/luajit",
+)
+
+kong_install(
+    name = "install-openresty",
+    src = "@openresty",
+    prefix = "openresty",
+    deps = [
+        ":install-openresty-luajit",
+        ":install-openssl",
+    ],
+)
+
+# Use this target when developing with nginx modules and want to
+# avoid rebuilding a clean OpenResty every time.
+kong_genrule(
+    name = "dev-make-openresty",
+    srcs = [
+        ":install-openresty-luajit",
+        "@openresty//:dev-just-make",
+    ],
+    outs = [
+        "openresty.dev.nop",
+    ],
+    cmd = """
+        rm -rf ${BUILD_DESTDIR}/openresty/nginx
+        cp -r $(location @openresty//:dev-just-make)/. ${BUILD_DESTDIR}/openresty/
+        touch ${BUILD_DESTDIR}/openresty.dev.nop
+    """,
+    visibility = ["//visibility:public"],
+)
+
+# Lua Libraries
 
 lualib_deps = [
-    "@lua-kong-nginx-module//:all_srcs",
-    "@lua-resty-lmdb//:all_srcs",
-    "@lua-resty-events//:all_srcs",
-    "@lua-resty-websocket//:all_srcs",
+    "@lua-kong-nginx-module//:lualib_srcs",
+    "@lua-resty-lmdb//:lualib_srcs",
+    "@lua-resty-events//:lualib_srcs",
+    "@lua-resty-websocket//:lualib_srcs",
+    "@atc_router//:lualib_srcs",
+]
+
+# TODO: merge into luaclib_deps once amazonlinux2 support is dropped
+lualib_conditional_deps = [
+    "@simdjson_ffi//:lualib_srcs",
+]
+
+[
+    kong_install(
+        name = "install-%s-lualib" % get_workspace_name(k),
+        src = k,
+        prefix = "openresty/site/lualib",
+        strip_path = get_workspace_name(k) + (
+            "/lualib" if k in [
+                "@lua-kong-nginx-module//:lualib_srcs",
+                "@lua-resty-events//:lualib_srcs",
+            ] else "/lib"
+        ),
+    )
+    for k in lualib_deps + lualib_conditional_deps
+]
+
+luaclib_deps = [
     "@atc_router",
 ]
 
-install_lualib_deps_cmd = "\n".join([
-    """
-    DEP=$(pwd)/external/%s
-    # TODO: fix atc_router makefile so that we can choose to only install lualib
-    sed -i -e '/libatc_router.so/d' ${DEP}/Makefile
-    INSTALL=/usr/bin/install make --silent -C ${DEP} LUA_LIB_DIR=${BUILD_DESTDIR}/openresty/lualib install
-""" % dep.lstrip("@").split("/")[0]
-    for dep in lualib_deps
-])
+# TODO: merge into luaclib_deps once amazonlinux2 support is dropped
+luaclib_conditional_deps = [
+    "@simdjson_ffi",
+]
 
-kong_directory_genrule(
+[
+    kong_install(
+        name = "install-%s-luaclib" % get_workspace_name(k),
+        src = k,
+        prefix = "openresty/site/lualib",
+        strip_path = get_workspace_name(k),
+    )
+    for k in luaclib_deps + luaclib_conditional_deps
+]
+
+kong_rules_group(
+    name = "install-lualibs",
+    propagates = [
+        "install-%s-lualib" % get_workspace_name(k)
+        for k in lualib_deps
+    ] + [
+        "install-%s-luaclib" % get_workspace_name(k)
+        for k in luaclib_deps
+    ] + select({
+        "@kong//:simdjson_flag": [
+            ":install-simdjson_ffi-lualib",
+            ":install-simdjson_ffi-luaclib",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+# WasmX
+
+kong_install(
+    name = "install-ngx-wasmx-module-lualib",
+    src = "@ngx_wasmx_module//:lualib_srcs",
+    prefix = "openresty/site/lualib",
+    strip_path = "ngx_wasmx_module/lib",
+)
+
+[
+    kong_install(
+        name = "install-wasm-filters-%s" % get_workspace_name(k),
+        src = k,
+        prefix = "kong/wasm",
+    )
+    for k in WASM_FILTERS_TARGETS
+]
+
+kong_rules_group(
+    name = "install-wasmx",
+    propagates = select({
+        "@kong//:wasmx_flag": [
+            ":install-ngx-wasmx-module-lualib",
+        ] + [
+            "install-wasm-filters-%s" % get_workspace_name(k)
+            for k in WASM_FILTERS_TARGETS
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+# Tools
+
+kong_rules_group(
+    name = "install-tools",
+    propagates = selects.with_or({
+        "//conditions:default": [],
+        (
+            "@kong//:skip_tools_flag",
+            "@platforms//os:macos",
+        ): [],
+    }),
+)
+
+# Static Files
+
+kong_install(
+    name = "install-webui-dists",
+    src = "@kong_admin_gui//:dist",
+    prefix = "kong/gui",
+)
+
+kong_install(
+    name = "install-protobuf-headers",
+    src = "@protoc//:include",
+    prefix = "kong/include",
+)
+
+kong_rules_group(
+    name = "install-static-assets",
+    propagates = [
+        ":install-protobuf-headers",
+    ] + select({
+        "//conditions:default": [
+            ":install-webui-dists",
+        ],
+        "@kong//:skip_webui_flags": [],
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# Wrap up : )
+
+kong_rules_group(
+    name = "install",
+    propagates = [
+        ":install-clibs",
+        ":install-lualibs",
+        ":install-wasmx",
+        ":install-openresty",
+        ":install-static-assets",
+        ":install-tools",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+kong_genrule(
     name = "kong",
     srcs = [
-        "@openresty//:openresty",
-        "@openresty//:luajit",
+        ":install",
         "@luarocks//:luarocks_make",
         "@luarocks//:luarocks_target",
-        "@protoc//:all_srcs",
-    ] + lib_deps + lualib_deps,
+    ],
+    outs = [
+        "bin/luarocks",
+        "bin/luarocks-admin",
+        "etc/kong/kong.conf.default",
+    ],
     cmd =
         """ set -e
-        function copy_with_filter {
-            mkdir -p $2
-            tar -cC $1 --exclude="*.a" --exclude="*.la" \
-                        --exclude="*/share/*" --exclude="*/bin/*" \
-                        --exclude="*.log" . | tar -xC $2/.
-            chmod -R "+rw" $2
-        }
-        function LN {
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                # TODO: support relative path links once we start to cross compile on macOS
-                ln -sf $@
-            else
-                ln -srf $@
-            fi
-        }
-        rm -rf ${BUILD_DESTDIR}
-        mkdir -p ${BUILD_DESTDIR}/kong/lib ${BUILD_DESTDIR}/openresty ${BUILD_DESTDIR}/bin
+        rm -rf ${BUILD_DESTDIR}/share ${BUILD_DESTDIR}/lib ${BUILD_DESTDIR}/etc
+        LUAROCKS=$(dirname '$(location @luarocks//:luarocks_make)')/luarocks_tree
+        cp -r ${LUAROCKS}/share ${LUAROCKS}/lib ${LUAROCKS}/etc ${BUILD_DESTDIR}/.
+        cp ${LUAROCKS}/bin/luarocks ${BUILD_DESTDIR}/bin/.
+        cp ${LUAROCKS}/bin/luarocks-admin ${BUILD_DESTDIR}/bin/.
 
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            libext="dylib"
-        else # assume linux
-            libext="so"
-        fi
-
-        OPENRESTY=${WORKSPACE_PATH}/$(echo '$(locations @openresty//:openresty)' | awk '{print $1}')
-        cp -r ${OPENRESTY}/. ${BUILD_DESTDIR}/openresty/.
-        LN ${BUILD_DESTDIR}/openresty/bin/resty ${BUILD_DESTDIR}/bin/resty
-        chmod -R "+rw" ${BUILD_DESTDIR}/openresty
-
-        LUAJIT=${WORKSPACE_PATH}/$(echo '$(locations @openresty//:luajit)' | awk '{print $1}')
-        copy_with_filter ${LUAJIT} ${BUILD_DESTDIR}/openresty/luajit
-        cp ${LUAJIT}/bin/luajit ${BUILD_DESTDIR}/openresty/luajit/bin/luajit
-        tar -cC ${LUAJIT}/share . | tar -xC ${BUILD_DESTDIR}/openresty/luajit/share
-        chmod -R "+rw" ${BUILD_DESTDIR}/openresty/luajit
-
-        LUAROCKS=${WORKSPACE_PATH}/$(dirname '$(location @luarocks//:luarocks_make)')/luarocks_tree
-        cp -r ${LUAROCKS}/. ${BUILD_DESTDIR}/.
-        rm ${BUILD_DESTDIR}/bin/lapis ${BUILD_DESTDIR}/bin/luarocks-admin
-
-        ATC_ROUTER=${WORKSPACE_PATH}/$(location @atc_router)
-        cp $ATC_ROUTER ${BUILD_DESTDIR}/openresty/lualib/.
-
-        cp -r $(locations @protoc//:all_srcs) ${BUILD_DESTDIR}/kong/.
-
-    """ + install_lib_deps_cmd + install_lualib_deps_cmd +
-        """
-        mkdir -p ${BUILD_DESTDIR}/etc/kong
-        cp kong.conf.default ${BUILD_DESTDIR}/etc/kong/kong.conf.default
+        mkdir -p ${BUILD_DESTDIR}/etc/kong/
+        cp ${WORKSPACE_PATH}/kong.conf.default ${BUILD_DESTDIR}/etc/kong/kong.conf.default
 
         # housecleaning
-        mv ${BUILD_DESTDIR}/kong/*.${libext}* ${BUILD_DESTDIR}/kong/lib 2>/dev/null || true
         if [[ -d ${BUILD_DESTDIR}/kong/lib64 ]]; then
-            copy_with_filter ${BUILD_DESTDIR}/kong/lib64 ${BUILD_DESTDIR}/kong/lib
+            cp -r ${BUILD_DESTDIR}/kong/lib64/* ${BUILD_DESTDIR}/kong/lib/.
             rm -rf ${BUILD_DESTDIR}/kong/lib64
         fi
-
-        # remove pkgconfig since they are invalid anyway
-        find ${BUILD_DESTDIR} -name "*.pc" -delete
 
         # clean empty directory
         find ${BUILD_DESTDIR} -empty -type d -delete
 
-        # foreign_cc rule dereferences symlink, we will dedup them here
-        # TODO: patch https://github.com/bazelbuild/rules_foreign_cc/blob/main/foreign_cc/private/framework.bzl#L450 to not remove symlink
-        for f in $(find ${BUILD_DESTDIR}/kong/lib ${BUILD_DESTDIR}/openresty/luajit/lib -type f -name "*.${libext}*" ); do
-            if [[ -L "$f" ]]; then continue; fi # already a symlink
-            target=$(ls -r1 $f.* 2>/dev/null | head -n1)
-            if [[ ! -z "$target" && "$f" != "$target" ]]; then
-                LN "$target" "$f"
-            fi
-        done
-        LN ${BUILD_DESTDIR}/openresty/nginx/sbin/nginx ${BUILD_DESTDIR}/openresty/bin/openresty
+        # create empty folder to make nfpm happy when skip_tools is set to True
+        mkdir -p ${BUILD_DESTDIR}/kong-tools
     """,
-    # XXX: bazel forces 0555 as artifact permission, which is not correct for packagin
-    # here we deliberately use a different directory so file permission is preserved
-    # see also https://github.com/bazelbuild/bazel/issues/5588
-    output_dir = KONG_VAR["BUILD_NAME"] + ".nop",
+    out_dirs = [
+        "etc/luarocks",
+        "lib",
+        "share",
+    ],
     visibility = ["//visibility:public"],
 )
 

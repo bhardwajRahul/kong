@@ -1,10 +1,11 @@
 local cjson   = require "cjson"
-local helpers = require "spec.helpers"
-local utils = require "kong.tools.utils"
+local hybrid_helper = require "spec.hybrid"
+local random_string = require("kong.tools.rand").random_string
+local uuid = require("kong.tools.uuid").uuid
 
 
-for _, strategy in helpers.each_strategy() do
-  describe("Plugin: key-auth (API) [#" .. strategy .. "]", function()
+hybrid_helper.run_for_each_deploy({}, function(helpers, strategy, deploy, rpc, rpc_sync)
+  describe("Plugin: key-auth (API) [" .. helpers.format_tags() .. "]", function()
     local consumer
     local admin_client
     local bp
@@ -469,10 +470,7 @@ for _, strategy in helpers.each_strategy() do
           assert.equal(3, #json_2.data)
 
           assert.not_same(json_1.data, json_2.data)
-          -- Disabled: on Cassandra, the last page still returns a
-          -- next_page token, and thus, an offset proprty in the
-          -- response of the Admin API.
-          --assert.is_nil(json_2.offset) -- last page
+          assert.is_nil(json_2.offset) -- last page
         end)
       end)
 
@@ -590,14 +588,14 @@ for _, strategy in helpers.each_strategy() do
         it("returns 404 for a random non-existing id", function()
           local res = assert(admin_client:send {
             method = "GET",
-            path = "/key-auths/" .. utils.uuid()  .. "/consumer"
+            path = "/key-auths/" .. uuid()  .. "/consumer"
           })
           assert.res_status(404, res)
         end)
         it("returns 404 for a random non-existing key", function()
           local res = assert(admin_client:send {
             method = "GET",
-            path = "/key-auths/" .. utils.random_string()  .. "/consumer"
+            path = "/key-auths/" .. random_string()  .. "/consumer"
           })
           assert.res_status(404, res)
         end)
@@ -606,4 +604,4 @@ for _, strategy in helpers.each_strategy() do
 
     end)
   end)
-end
+end)

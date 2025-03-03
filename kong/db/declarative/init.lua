@@ -1,7 +1,6 @@
 local pl_file = require "pl.file"
 local lyaml = require "lyaml"
 local cjson = require "cjson.safe"
-local utils = require "kong.tools.utils"
 local declarative_config = require "kong.db.schema.others.declarative_config"
 local on_the_fly_migration = require "kong.db.declarative.migrations.route_path"
 local declarative_import = require "kong.db.declarative.import"
@@ -17,7 +16,7 @@ local type = type
 local null = ngx.null
 local md5 = ngx.md5
 local pairs = pairs
-local yield = utils.yield
+local yield = require("kong.tools.yield").yield
 local cjson_decode = cjson.decode
 local cjson_encode = cjson.encode
 local convert_nulls = declarative_export.convert_nulls
@@ -246,15 +245,26 @@ _M.to_yaml_file                = declarative_export.to_yaml_file
 _M.export_from_db              = declarative_export.export_from_db
 _M.export_config               = declarative_export.export_config
 _M.export_config_proto         = declarative_export.export_config_proto
+_M.export_config_sync          = declarative_export.export_config_sync
 _M.sanitize_output             = declarative_export.sanitize_output
 
 
 -- import
 _M.get_current_hash            = declarative_import.get_current_hash
 _M.unique_field_key            = declarative_import.unique_field_key
+_M.item_key                    = declarative_import.item_key
+_M.item_key_prefix             = declarative_import.item_key_prefix
+_M.foreign_field_key_prefix    = declarative_import.foreign_field_key_prefix
 _M.load_into_db                = declarative_import.load_into_db
 _M.load_into_cache             = declarative_import.load_into_cache
 _M.load_into_cache_with_events = declarative_import.load_into_cache_with_events
+_M.insert_entity_for_txn       = declarative_import.insert_entity_for_txn
+_M.delete_entity_for_txn       = declarative_import.delete_entity_for_txn
+_M.workspace_id                = declarative_import.workspace_id
+_M.GLOBAL_WORKSPACE_TAG        = declarative_import.GLOBAL_WORKSPACE_TAG
+
+-- helpful function
+_M.pretty_print_error          = pretty_print_error
 
 
 return _M

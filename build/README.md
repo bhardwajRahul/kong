@@ -4,7 +4,7 @@ This directory contains the build system for the project.
 The build system is designed to be used with the [Bazel](https://bazel.build/).
 It is designed to be running on Linux without root privileges, and no virtualization technology is required.
 
-The build system is tested on Linux (x86_64 and arm64) and macOS (Intel chip and AppleSilicon Chip).
+The build system is tested on Linux (x86_64 and aarch64) and macOS (Intel chip and AppleSilicon Chip).
 
 ## Prerequisites
 
@@ -24,8 +24,11 @@ The build system requires the following tools to be installed:
     # check bazel version
     bazel version
   ```
-
 - [Build dependencies](https://github.com/Kong/kong/blob/master/DEVELOPER.md#build-and-install-from-source)
+
+**Note**: Bazel relies on logged user to create the temporary file system; however if your username contains `@`
+it collides with Bazel templating system. Therefore you can set the environment variable `export USER=myname` to fix
+this issue.
 
 ## Building
 
@@ -58,6 +61,22 @@ This operation primarily accomplishes the following:
 2. Set and specify the runtime path for Kong.
 3. Provide Bash functions to start and stop the database and other third-party dependency services required for Kong development environment using Docker, read more: [Start Kong](../DEVELOPER#start-kong).
 
+###  C module and Nginx development
+
+When we are developing part of the Kong installation, especially some Nginx C modules, installing stuffs like luarocks is not necessary. We can use the following steps:
+
+1. Update the C module to be pointed to point a local path. In `.requirements` update (for example) `LUA_KONG_NGINX_MODULE=/path/to/lua-kong-nginx-module`
+2. Do a full build once `bazel build //build:install-openresty`
+3. The produced nginx is at `./bazel-bin/build/kong-dev/openresty/nginx/sbin/nginx`
+4. Do incremental build using `bazel build //build:dev-make-openresty`
+
+One can also use `make build-openresty` to automatically do a full build or a incremental build.
+
+Other targets developer may found useful to cope with Nginx development:
+
+- Install the lua files come with the C modules: `bazel build //build:install-lualibs`
+- Install WasmX related artifacts: `bazel build //build:install-wasmx`
+
 ### Debugging
 
 Query list all direct dependencies of the `kong` target
@@ -66,14 +85,23 @@ Query list all direct dependencies of the `kong` target
 bazel query 'deps(//build:kong, 1)'
 
 # output
-@openresty//:luajit
-@openresty//:openresty
+//build:install
+//build:kong
+@luarocks//:luarocks_make
+@luarocks//:luarocks_target
 ...
 ```
 
+Each targets under `//build:install` installs an independent component that
+composes the Kong runtime environment. We can query `deps(//build:install, 1)`
+recursively to find the target that only build and install specific component.
+This would be useful if one is debugging the issue of a specific target without
+the need to build whole Kong runtime environment. 
+
 We can use the target labels to build the dependency directly, for example:
 
-- `bazel build @openresty//:openresty`: builds openresty
+- `bazel build //build:install-openresty`: builds openresty
+- `bazel build //build:install-atc_router-luaclib`: builds the ATC router shared library
 - `bazel build @luarocks//:luarocks_make`: builds luarocks for Kong dependencies
 
 #### Debugging variables in *.bzl files
@@ -145,11 +173,9 @@ bazel build --config release //build:kong --verbose_failures
 Supported build targets for binary packages:
 
 - `:kong_deb`
-- `:kong_el7`
 - `:kong_el8`
 - `:kong_aws2`
-- `:kong_aws2022`
-- `:kong_apk`
+- `:kong_aws2023`
 
 For example, to build the deb package:
 
@@ -170,19 +196,41 @@ bazel build //:kong_el8 --action_env=RPM_SIGNING_KEY_FILE --action_env=NFPM_RPM_
 - `RPM_SIGNING_KEY_FILE`: the path to the GPG private key file.
 - `NFPM_RPM_PASSPHRASE`: the passphrase of the GPG private key.
 
+#### ngx_wasm_module options
+
+Building of [ngx_wasm_module](https://github.com/Kong/ngx_wasm_module) can be
+controlled with a few CLI flags:
+
+* `--//:wasmx=(true|false)` (default: `true`) - enable/disable wasmx
+* `--//:wasmx_module_flag=(dynamic|static)` (default: `dynamic`) - switch
+    between static or dynamic nginx module build configuration
+* `--//:wasm_runtime=(wasmtime|wasmer|v8)` (default: `wasmtime`) select the wasm
+    runtime to build
+
+Additionally, there are a couple environment variables that can be set at build
+time to control how the ngx_wasm_module repository is sourced:
+
+* `NGX_WASM_MODULE_REMOTE` (default: `https://github.com/Kong/ngx_wasm_module.git`) -
+    this can be set to a local filesystem path to avoid pulling the repo from github
+* `NGX_WASM_MODULE_BRANCH` (default: none) - Setting this environment variable
+    tells bazel to build from a branch rather than using the tag found in our
+    `.requirements` file
+
 ## Cross compiling
 
-Cross compiling is currently only tested on Ubuntu 22.04 x86_64 with following targeting platforms:
+Cross compiling is currently only tested on Ubuntu 22.04/24.04 x86_64 with following targeting platforms:
 
-- **//:ubuntu-22.04-arm64** Ubuntu 22.04 ARM64
-  - Requires user to manually install `crossbuild-essential-arm64`.
-- **//:alpine-x86_64** Alpine Linux x86_64; bazel manages the build toolchain.
+- **//:generic-crossbuild-aarch64** Use the system installed aarch64 toolchain.
+  - Requires user to manually install `crossbuild-essential-arm64` on Debian/Ubuntu.
+- **//:vendor_name-crossbuild-aarch64** Target to Redhat based Linux aarch64; bazel manages the build toolchain, `vendor_name`
+can be any of `rhel8`, `rhel9`, `aws2` or `aws2023`.
+- **//:aws2-crossbuild-x86_64** Target to AmazonLinux 2 x86_64; bazel manages the build toolchain.
 
 Make sure platforms are selected both in building Kong and packaging kong:
 
 ```bash
-bazel build --config release //build:kong --platforms=//:ubuntu-2204-arm64
-bazel build --config release :kong_deb --platforms=//:ubuntu-2204-arm64
+bazel build --config release //build:kong --platforms=//:generic-crossbuild-aarch64
+bazel build --config release :kong_deb --platforms=//:generic-crossbuild-aarch64
 ```
 
 ## Troubleshooting

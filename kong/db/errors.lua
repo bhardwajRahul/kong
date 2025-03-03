@@ -2,7 +2,8 @@ local pl_pretty = require("pl.pretty").write
 local pl_keys = require("pl.tablex").keys
 local nkeys = require("table.nkeys")
 local table_isarray = require("table.isarray")
-local utils = require("kong.tools.utils")
+local uuid = require("kong.tools.uuid")
+local json = require("kong.tools.cjson")
 
 
 local type         = type
@@ -21,6 +22,7 @@ local concat       = table.concat
 local sort         = table.sort
 local insert       = table.insert
 local remove       = table.remove
+local new_array    = json.new_array
 
 
 local sorted_keys = function(tbl)
@@ -52,6 +54,9 @@ local ERRORS              = {
   INVALID_FOREIGN_KEY     = 16, -- foreign key is valid for matching a row
   INVALID_WORKSPACE       = 17, -- strategy reports a workspace error
   INVALID_UNIQUE_GLOBAL   = 18, -- unique field value is invalid for global query
+  REFERENCED_BY_OTHERS    = 19, -- still referenced by other entities
+  INVALID_SEARCH_QUERY    = 20, -- ex. searched_field[unknown] = something -> 'unknown' is invalid (HTTP 400)
+  SYNC_DELTAS             = 21, -- error parsing sync deltas for sync.v2
 }
 
 
@@ -77,6 +82,9 @@ local ERRORS_NAMES                 = {
   [ERRORS.INVALID_FOREIGN_KEY]     = "invalid foreign key",
   [ERRORS.INVALID_WORKSPACE]       = "invalid workspace",
   [ERRORS.INVALID_UNIQUE_GLOBAL]   = "invalid global query",
+  [ERRORS.REFERENCED_BY_OTHERS]    = "referenced by others",
+  [ERRORS.INVALID_SEARCH_QUERY]    = "invalid search query",
+  [ERRORS.SYNC_DELTAS]             = "invalid sync deltas",
 }
 
 
@@ -496,6 +504,17 @@ function _M:declarative_config(err_t)
 end
 
 
+function _M:sync_deltas(err_t)
+  if type(err_t) ~= "table" then
+    error("err_t must be a table", 2)
+  end
+
+  local message = fmt("sync deltas is invalid: %s", pl_pretty(err_t, ""))
+
+  return new_err_t(self, ERRORS.SYNC_DELTAS, message, err_t)
+end
+
+
 function _M:invalid_workspace(ws_id)
   if type(ws_id) ~= "string" then
     error("ws_id must be a string", 2)
@@ -514,6 +533,15 @@ function _M:invalid_unique_global(name)
 
   return new_err_t(self, ERRORS.INVALID_UNIQUE_GLOBAL,
                    fmt("unique key %s is invalid for global query", name))
+end
+
+
+function _M:referenced_by_others(err)
+  if type(err) ~= "string" then
+    error("err must be a string", 2)
+  end
+
+  return new_err_t(self, ERRORS.REFERENCED_BY_OTHERS, err)
 end
 
 
@@ -709,7 +737,7 @@ do
   ---@param ns?        string
   ---@param flattened? table
   local function categorize_errors(errs, ns, flattened)
-    flattened = flattened or {}
+    flattened = flattened or new_array()
 
     for field, err in drain(errs) do
       local errtype = type(err)
@@ -746,7 +774,7 @@ do
   ---@return string|nil
   local function validate_id(id)
     return (type(id) == "string"
-            and utils.is_valid_uuid(id)
+            and uuid.is_valid_uuid(id)
             and id)
            or nil
   end
@@ -767,41 +795,15 @@ do
   end
 
 
-  --- Add foreign key references to child entities.
-  ---
-  ---@param entity             table
-  ---@param field_name         string
-  ---@param foreign_field_name string
-  local function add_foreign_keys(entity, field_name, foreign_field_name)
-    local foreign_id = validate_id(entity.id)
-    if not foreign_id then
-      return
+  -- given an entity table with an .id attribute that is a valid UUID,
+  -- yield a primary key table
+  --
+  ---@param entity table
+  ---@return table?
+  local function make_pk(entity)
+    if validate_id(entity.id) then
+      return { id = entity.id }
     end
-
-    local values = entity[field_name]
-    if type(values) ~= "table" then
-      return
-    end
-
-    local fk = { id = foreign_id }
-    for i = 1, #values do
-      values[i][foreign_field_name] = values[i][foreign_field_name] or fk
-    end
-  end
-
-
-  ---@param  entity     table
-  ---@param  field_name string
-  ---@return any
-  local function replace_with_foreign_key(entity, field_name)
-    local value = entity[field_name]
-    entity[field_name] = nil
-
-    if type(value) == "table" and value.id then
-      entity[field_name] = { id = value.id }
-    end
-
-    return value
   end
 
 
@@ -810,47 +812,195 @@ do
   ---@param err_t       table
   ---@param flattened   table
   local function add_entity_errors(entity_type, entity, err_t, flattened)
-    if type(err_t) ~= "table" or nkeys(err_t) == 0 then
+    local err_type = type(err_t)
+
+    -- promote error strings to `@entity` type errors
+    if err_type == "string" then
+      err_t = { ["@entity"] = err_t }
+
+    elseif err_type ~= "table" or nkeys(err_t) == 0 then
       return
     end
 
-    -- instead of a single entity, we have a collection
-    if is_array(entity) then
-      for i, err_t_i in drain(err_t) do
-        add_entity_errors(entity_type, entity[i], err_t_i, flattened)
-      end
+    -- this *should* be unreachable, but it's relatively cheap to guard against
+    -- compared to everything else we're doing in this code path
+    if type(entity) ~= "table" then
+      log(WARN, "could not parse ", entity_type, " errors for non-table ",
+                "input: '", tostring(entity), "'")
       return
     end
+
+    local entity_pk = make_pk(entity)
 
     -- promote errors for foreign key relationships up to the top level
     -- array of errors and recursively flatten any of their validation
     -- errors
     for ref in each_foreign_field(entity_type) do
-      local field_name
-      local field_value
-      local field_entity_type
-
-      -- owned one-to-one relationship (e.g. service->client_certificate)
+      -- owned one-to-one relationship
+      --
+      -- Example:
+      --
+      -- entity_type => "services"
+      --
+      -- entity => {
+      --   name = "my-invalid-service",
+      --   url  = "https://localhost:1234"
+      --   client_certificate = {
+      --     id   = "d2e33f63-1424-408f-be55-d9d16cd2a382",
+      --     cert = "bad cert data",
+      --     key  = "bad cert key data",
+      --   }
+      -- }
+      --
+      -- ref => {
+      --   entity    = "services",
+      --   field     = "client_certificate",
+      --   reference = "certificates"
+      -- }
+      --
+      -- field_name => "client_certificate"
+      --
+      -- field_entity_type => "certificates"
+      --
+      -- field_value => {
+      --   id   = "d2e33f63-1424-408f-be55-d9d16cd2a382",
+      --   cert = "bad cert data",
+      --   key  = "bad cert key data",
+      -- }
+      --
+      -- because the client certificate entity has a valid ID, we store a
+      -- reference to it as a primary key on our entity table:
+      --
+      -- entity => {
+      --   name = "my-invalid-service",
+      --   url  = "https://localhost:1234"
+      --   client_certificate = {
+      --     id   = "d2e33f63-1424-408f-be55-d9d16cd2a382",
+      --   }
+      -- }
+      --
       if ref.entity == entity_type then
-        field_name = ref.field
-        field_entity_type = ref.reference
-        field_value = replace_with_foreign_key(entity, field_name)
+        local field_name = ref.field
+        local field_value = entity[field_name]
+        local field_entity_type = ref.reference
+        local field_err_t = err_t[field_name]
 
-      -- foreign one-to-many relationship (e.g. service->routes)
+        -- if the foreign value is _not_ a table, attempting to treat it like
+        -- an entity or array of entities will only yield confusion.
+        --
+        -- instead, it's better to leave the error intact so that it will be
+        -- categorized as a field error on the current entity
+        if type(field_value) == "table" then
+          entity[field_name] = make_pk(field_value)
+          err_t[field_name] = nil
+
+          add_entity_errors(field_entity_type, field_value, field_err_t, flattened)
+        end
+
+
+      -- foreign one-to-many relationship
+      --
+      -- Example:
+      --
+      -- entity_type => "routes"
+      --
+      -- entity => {
+      --   name     = "my-invalid-route",
+      --   id       = "d2e33f63-1424-408f-be55-d9d16cd2a382",
+      --   paths    = { 123 },
+      --   plugins  = {
+      --     {
+      --       name   = "http-log",
+      --       config = {
+      --         invalid_param = 456,
+      --       },
+      --     },
+      --     {
+      --       name   = "file-log",
+      --       config = {
+      --         invalid_param = 456,
+      --       },
+      --     },
+      --   },
+      -- }
+      --
+      -- ref => {
+      --   entity    = "plugins",
+      --   field     = "route",
+      --   reference = "routes"
+      -- }
+      --
+      -- field_name => "plugins"
+      --
+      -- field_entity_type => "plugins"
+      --
+      -- field_value => {
+      --   {
+      --     name   = "http-log",
+      --     config = {
+      --       invalid_param = 456,
+      --     },
+      --   },
+      --   {
+      --     name   = "file-log",
+      --     config = {
+      --       invalid_param = 456,
+      --     },
+      --   },
+      -- }
+      --
+      -- before recursing on each plugin in `entity.plugins` to handle their
+      -- respective validation errors, we add our route's primary key to them,
+      -- yielding:
+      --
+      -- {
+      --   {
+      --     name   = "http-log",
+      --     config = {
+      --       invalid_param = 456,
+      --     },
+      --     route = {
+      --       id = "d2e33f63-1424-408f-be55-d9d16cd2a382",
+      --     },
+      --   },
+      --   {
+      --     name   = "file-log",
+      --     config = {
+      --       invalid_param = 456,
+      --     },
+      --     route = {
+      --       id = "d2e33f63-1424-408f-be55-d9d16cd2a382",
+      --     },
+      --   },
+      -- }
+      --
       else
-        field_name = ref.entity
-        field_entity_type = field_name
-        field_value = entity[field_name]
+        local field_name = ref.entity
+        local field_value = entity[field_name]
+        local field_entity_type = field_name
+        local field_err_t = err_t[field_name]
+        local field_fk = ref.field
 
-        add_foreign_keys(entity, field_name, ref.field)
-        entity[field_name] = nil
-      end
+        -- same as the one-to-one case: if the field's value is not a table,
+        -- we will let any errors related to it be categorized as a field-level
+        -- error instead
+        if type(field_value) == "table" then
+          entity[field_name] = nil
+          err_t[field_name] = nil
 
-      local field_err_t = err_t[field_name]
-      err_t[field_name] = nil
+          if field_err_t then
+            for i = 1, #field_value do
+              local item = field_value[i]
 
-      if field_value and field_err_t then
-        add_entity_errors(field_entity_type, field_value, field_err_t, flattened)
+              -- add our entity's primary key to each child item
+              if item[field_fk] == nil then
+                item[field_fk] = entity_pk
+              end
+
+              add_entity_errors(field_entity_type, item, field_err_t[i], flattened)
+            end
+          end
+        end
       end
     end
 
@@ -887,7 +1037,7 @@ do
   ---@param  input table
   ---@return table
   function flatten_errors(input, err_t)
-    local flattened = {}
+    local flattened = new_array()
 
     for entity_type, section_errors in drain(err_t) do
       if type(section_errors) ~= "table" then
@@ -1033,6 +1183,32 @@ function _M:declarative_config_flattened(err_t, input)
   err_t.flattened_errors = flattened
 
   return err_t
+end
+
+
+-- traverse schema validation errors and correlate them with objects/entities
+-- which does not pass delta validation for sync.v2
+--
+---@param  err_t table
+---@param  err_entities table
+---@return table
+function _M:sync_deltas_flattened(err_t, err_entities)
+  if type(err_t) ~= "table" then
+    error("err_t must be a table", 2)
+  end
+
+  if type(err_entities) ~= "table" then
+    error("err_entities is nil or not a table", 2)
+  end
+
+  local flattened = flatten_errors(err_entities, err_t)
+
+  err_t = self:sync_deltas(err_t)
+
+  err_t.flattened_errors = flattened
+
+  return err_t
+
 end
 
 

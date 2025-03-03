@@ -2,7 +2,7 @@ local helpers = require "spec.helpers"
 local cjson = require "cjson"
 local escape = require("socket.url").escape
 local Errors  = require "kong.db.errors"
-local utils   = require "kong.tools.utils"
+local uuid   = require "kong.tools.uuid"
 
 
 local function it_content_types(title, fn)
@@ -46,7 +46,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
   end)
 
   lazy_teardown(function()
-    helpers.stop_kong(nil, true)
+    helpers.stop_kong()
   end)
 
   before_each(function()
@@ -267,7 +267,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
         assert.same(c, json.data[1])
       end)
       it("allows filtering by uuid-like custom_id", function()
-        local custom_id = utils.uuid()
+        local custom_id = uuid.uuid()
         local c = bp.consumers:insert({ custom_id = custom_id }, { nulls = true })
 
         local res = client:get("/consumers?custom_id=" .. custom_id)
@@ -281,6 +281,16 @@ describe("Admin API (#" .. strategy .. "): ", function()
         local res = client:get("/consumers?custom_id=does-not-exist")
         local body = assert.response(res).has.status(200)
         assert.match('"data":%[%]', body)
+      end)
+      it("returns bad request for empty tags", function()
+        local res = assert(client:send {
+          method = "GET",
+          path = "/consumers",
+          query = { tags = ngx.null}
+        })
+        res = assert.res_status(400, res)
+        local json = cjson.decode(res)
+        assert.same("invalid option (tags: cannot be null)", json.message)
       end)
     end)
     it("returns 405 on invalid method", function()
@@ -373,7 +383,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
             assert.equal(consumer.id, json.id)
             assert.truthy(consumer.updated_at < json.updated_at)
 
-            local in_db = assert(db.consumers:select({ id = consumer.id }, { nulls = true }))
+            local in_db = assert(db.consumers:select(consumer, { nulls = true }))
             assert.same(json, in_db)
           end
         end)
@@ -394,7 +404,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
             assert.equal(new_username, json.username)
             assert.equal(consumer.id, json.id)
 
-            local in_db = assert(db.consumers:select({ id = consumer.id }, { nulls = true }))
+            local in_db = assert(db.consumers:select(consumer, { nulls = true }))
             assert.same(json, in_db)
           end
         end)
@@ -416,7 +426,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
             assert.equal(consumer.custom_id, json.custom_id)
             assert.equal(consumer.id, json.id)
 
-            local in_db = assert(db.consumers:select({ id = consumer.id }, { nulls = true }))
+            local in_db = assert(db.consumers:select(consumer, { nulls = true }))
             assert.same(json, in_db)
           end
         end)
@@ -472,7 +482,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
         it_content_types("creates if not exists", function(content_type)
           return function()
             local custom_id = gensym()
-            local id = utils.uuid()
+            local id = uuid.uuid()
             local res = client:put("/consumers/" .. id, {
               body    = { custom_id = custom_id },
               headers = { ["Content-Type"] = content_type }
@@ -511,7 +521,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
             local json = cjson.decode(body)
             assert.equal(new_username, json.username)
 
-            local in_db = assert(db.consumers:select({ id = consumer.id }, { nulls = true }))
+            local in_db = assert(db.consumers:select(consumer, { nulls = true }))
             assert.same(json, in_db)
           end
         end)
@@ -556,7 +566,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
           it_content_types("handles invalid input", function(content_type)
             return function()
               -- Missing params
-              local res = client:put("/consumers/" .. utils.uuid(), {
+              local res = client:put("/consumers/" .. uuid.uuid(), {
                 body = {},
                 headers = { ["Content-Type"] = content_type }
               })
@@ -834,7 +844,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
           assert.equal("updated", json.config.value)
           assert.equal(plugin.id, json.id)
 
-          local in_db = assert(db.plugins:select({ id = plugin.id }, { nulls = true }))
+          local in_db = assert(db.plugins:select(plugin, { nulls = true }))
           assert.same(json, in_db)
         end)
 
@@ -844,8 +854,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
           local plugin = bp.rewriter_plugins:insert({ consumer = { id = consumer.id }})
 
           local err
-          plugin, err = db.plugins:update(
-            { id = plugin.id },
+          plugin, err = db.plugins:update(plugin,
             {
               name = "rewriter",
               route = plugin.route,
@@ -896,7 +905,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
           local json = cjson.decode(body)
           assert.False(json.enabled)
 
-          plugin = assert(db.plugins:select{ id = plugin.id })
+          plugin = assert(db.plugins:select(plugin))
           assert.False(plugin.enabled)
         end
       end)
@@ -955,7 +964,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
       for content_type, input in pairs(inputs) do
         it("creates if not found with " .. content_type, function()
           local consumer = bp.consumers:insert()
-          local plugin_id = utils.uuid()
+          local plugin_id = uuid.uuid()
 
           local res = assert(client:send {
             method = "PUT",
@@ -989,9 +998,7 @@ describe("Admin API (#" .. strategy .. "): ", function()
           assert.equal("updated", json.config.value)
           assert.equal(plugin.id, json.id)
 
-          local in_db = assert(db.plugins:select({
-            id = plugin.id,
-          }, { nulls = true }))
+          local in_db = assert(db.plugins:select(plugin, { nulls = true }))
           assert.same(json, in_db)
         end)
       end

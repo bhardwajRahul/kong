@@ -28,10 +28,7 @@ for _, strategy in helpers.all_strategies() do
         })
         local body = assert.res_status(200, res)
         local json = cjson.decode(body)
-        assert.is_table(json.database)
         assert.is_table(json.server)
-
-        assert.is_boolean(json.database.reachable)
 
         assert.is_number(json.server.connections_accepted)
         assert.is_number(json.server.connections_active)
@@ -42,8 +39,12 @@ for _, strategy in helpers.all_strategies() do
         assert.is_number(json.server.total_requests)
         if strategy == "off" then
           assert.is_equal(string.rep("0", 32), json.configuration_hash) -- all 0 in DBLESS mode until configuration is applied
+          assert.is_nil(json.database)
+
         else
           assert.is_nil(json.configuration_hash) -- not present in DB mode
+          assert.is_table(json.database)
+          assert.is_boolean(json.database.reachable)
         end
         client:close()
       end)
@@ -77,9 +78,8 @@ services:
           })
           local body = assert.res_status(200, res)
           local json = cjson.decode(body)
-          assert.is_table(json.database)
+          assert.is_nil(json.database)
           assert.is_table(json.server)
-          assert.is_boolean(json.database.reachable)
           assert.is_number(json.server.connections_accepted)
           assert.is_number(json.server.connections_active)
           assert.is_number(json.server.connections_handled)
@@ -135,10 +135,15 @@ services:
         })
         local body = assert.res_status(200, res)
         local json = cjson.decode(body)
-        assert.is_table(json.database)
         assert.is_table(json.server)
 
-        assert.is_boolean(json.database.reachable)
+        if strategy == "off" then
+          assert.is_nil(json.database)
+
+        else
+          assert.is_table(json.database)
+          assert.is_boolean(json.database.reachable)
+        end
 
         assert.is_number(json.server.connections_accepted)
         assert.is_number(json.server.connections_active)
@@ -182,8 +187,8 @@ for _, strategy in helpers.each_strategy() do
 
       local db_service = bp.services:insert{
         protocol = "tcp",
-        host = strategy == "postgres" and kong.configuration.pg_host or kong.configuration.cassandra_contact_points[1],
-        port = strategy == "postgres" and kong.configuration.pg_port or kong.configuration.cassandra_port,
+        host = kong.configuration.pg_host,
+        port = kong.configuration.pg_port,
       }
 
       bp.routes:insert{
@@ -207,9 +212,6 @@ for _, strategy in helpers.each_strategy() do
         database = strategy,
         pg_host = "127.0.0.1",
         pg_port = stream_proxy_port,
-        cassandra_contact_points = "127.0.0.1",
-        cassandra_port = stream_proxy_port,
-        db_update_propagation = strategy == "cassandra" and 1 or 0,
         plugins = "bundled,prometheus",
         declarative_config = strategy == "off" and helpers.make_yaml_file() or nil,
         admin_listen = "off",
@@ -251,7 +253,11 @@ for _, strategy in helpers.each_strategy() do
       })
       local body = assert.res_status(200, res)
       local json = cjson.decode(body)
-      assert.is_true(json.database.reachable)
+      if strategy == "off" then
+        assert.is_nil(json.database)
+      else
+        assert.is_true(json.database.reachable)
+      end
 
       assert(helpers.stop_kong())
 
@@ -268,7 +274,11 @@ for _, strategy in helpers.each_strategy() do
       })
       local body = assert.res_status(200, res)
       local json = cjson.decode(body)
-      assert.is_falsy(json.database.reachable)
+      if strategy == "off" then
+        assert.is_nil(json.database)
+      else
+        assert.is_falsy(json.database.reachable)
+      end
     end)
   end)
 end
@@ -303,8 +313,13 @@ for _, strategy in helpers.all_strategies() do
 
       assert.equal('200', headers:get ":status")
 
-      assert.is_table(json.database)
-      assert.is_boolean(json.database.reachable)
+      if strategy == "off" then
+        assert.is_nil(json.database)
+
+      else
+        assert.is_table(json.database)
+        assert.is_boolean(json.database.reachable)
+      end
 
       assert.is_number(json.server.connections_accepted)
       assert.is_number(json.server.connections_active)

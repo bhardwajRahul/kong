@@ -6,10 +6,11 @@
 -- @module kong.request
 
 
-local cjson = require "cjson.safe".new()
+local cjson = require "kong.tools.cjson"
 local multipart = require "multipart"
 local phase_checker = require "kong.pdk.private.phases"
 local normalize = require("kong.tools.uri").normalize
+local yield = require("kong.tools.yield").yield
 
 
 local ngx = ngx
@@ -41,13 +42,8 @@ local get_body_file = req.get_body_file
 local decode_args = ngx.decode_args
 
 
-local is_http_subsystem = ngx and ngx.config.subsystem == "http"
-
-
 local PHASES = phase_checker.phases
 
-
-cjson.decode_array_with_array_mt(true)
 
 
 local function new(self)
@@ -85,19 +81,7 @@ local function new(self)
     end
   end
 
-  local replace_dashes do
-    -- 1.000.000 iterations with input of "my-header":
-    -- string.gsub:        81ms
-    -- ngx.re.gsub:        74ms
-    -- loop/string.buffer: 28ms
-    -- str_replace_char:   14ms
-    if is_http_subsystem then
-      local str_replace_char = require("resty.core.utils").str_replace_char
-      replace_dashes = function(str)
-        return str_replace_char(str, "-", "_")
-      end
-    end
-  end
+  local http_get_header = require("kong.tools.http").get_header
 
 
   ---
@@ -114,7 +98,7 @@ local function new(self)
   function _REQUEST.get_scheme()
     check_phase(PHASES.request)
 
-    return var.scheme
+    return ngx.ctx.scheme or var.scheme
   end
 
 
@@ -132,7 +116,7 @@ local function new(self)
   function _REQUEST.get_host()
     check_phase(PHASES.request)
 
-    return var.host
+    return ngx.ctx.host or var.host
   end
 
 
@@ -453,7 +437,7 @@ local function new(self)
   function _REQUEST.get_raw_path()
     check_phase(PHASES.request)
 
-    local uri = var.request_uri or ""
+    local uri = ngx.ctx.request_uri or var.request_uri or ""
     local s = find(uri, "?", 2, true)
     return s and sub(uri, 1, s - 1) or uri
   end
@@ -472,7 +456,7 @@ local function new(self)
   -- kong.request.get_path_with_query() -- "/v1/movies?movie=foo"
   function _REQUEST.get_path_with_query()
     check_phase(PHASES.request)
-    return var.request_uri or ""
+    return ngx.ctx.request_uri or var.request_uri or ""
   end
 
 
@@ -642,7 +626,7 @@ local function new(self)
       error("header name must be a string", 2)
     end
 
-    return var["http_" .. replace_dashes(name)]
+    return http_get_header(name)
   end
 
 
@@ -710,28 +694,71 @@ local function new(self)
   --
   -- If the size of the body is greater than the Nginx buffer size (set by
   -- `client_body_buffer_size`), this function fails and returns an error
-  -- message explaining this limitation.
+  -- message explaining this limitation, unless `max_allowed_file_size`
+  -- is set and equal to 0 or larger than the body size buffered to disk.
+  -- Use of `max_allowed_file_size` requires Kong to read data from filesystem
+  -- and has performance implications.
   --
   -- @function kong.request.get_raw_body
   -- @phases rewrite, access, response, admin_api
-  -- @treturn string The plain request body.
+  -- @max_allowed_file_size[opt] number the max allowed file size to be read from,
+  -- 0 means unlimited, but the size of this body will still be limited
+  -- by Nginx's client_max_body_size.
+  -- @treturn string|nil The plain request body or nil if it does not fit into
+  -- the NGINX temporary buffer.
+  -- @treturn nil|string An error message.
   -- @usage
   -- -- Given a body with payload "Hello, Earth!":
   --
   -- kong.request.get_raw_body():gsub("Earth", "Mars") -- "Hello, Mars!"
-  function _REQUEST.get_raw_body()
+  function _REQUEST.get_raw_body(max_allowed_file_size)
     check_phase(before_content)
 
     read_body()
 
     local body = get_body_data()
     if not body then
-      if get_body_file() then
-        return nil, "request body did not fit into client body buffer, consider raising 'client_body_buffer_size'"
-
-      else
+      local body_file = get_body_file()
+      if not body_file then
         return ""
       end
+
+      if not max_allowed_file_size or max_allowed_file_size < 0 then
+        return nil, "request body did not fit into client body buffer, consider raising 'client_body_buffer_size'"
+      end
+
+      local file, err = io.open(body_file, "r")
+      if not file then
+        return nil, "failed to open cached request body '" .. body_file .. "': " .. err
+      end
+
+      local size = file:seek("end") or 0
+      if max_allowed_file_size > 0 and size > max_allowed_file_size then
+        return nil, ("request body file too big: %d > %d"):format(size, max_allowed_file_size)
+      end
+
+      -- go to beginning
+      file:seek("set")
+      local chunk = {}
+      local chunk_idx = 1
+
+      while true do
+        local data, err = file:read(1048576) -- read in chunks of 1mb
+        if not data then
+          if err then
+            return nil, "failed to read cached request body '" .. body_file .. "': " .. err
+          end
+          break
+        end
+        chunk[chunk_idx] = data
+        chunk_idx = chunk_idx + 1
+
+        yield() -- yield to prevent starvation while doing blocking IO-reads
+      end
+
+      file:close()
+
+      return table.concat(chunk, "")
     end
 
     return body
@@ -782,6 +809,7 @@ local function new(self)
   -- @phases rewrite, access, response, admin_api
   -- @tparam[opt] string mimetype The MIME type.
   -- @tparam[opt] number max_args Sets a limit on the maximum number of parsed
+  -- @tparam[opt] number max_allowed_file_size the max allowed file size to be read from
   -- arguments.
   -- @treturn table|nil A table representation of the body.
   -- @treturn string|nil An error message.
@@ -790,7 +818,7 @@ local function new(self)
   -- local body, err, mimetype = kong.request.get_body()
   -- body.name -- "John Doe"
   -- body.age  -- "42"
-  function _REQUEST.get_body(mimetype, max_args)
+  function _REQUEST.get_body(mimetype, max_args, max_allowed_file_size)
     check_phase(before_content)
 
     local content_type = mimetype or _REQUEST.get_header(CONTENT_TYPE)
@@ -840,12 +868,12 @@ local function new(self)
       return pargs, nil, CONTENT_TYPE_POST
 
     elseif find(content_type_lower, CONTENT_TYPE_JSON, 1, true) == 1 then
-      local body, err = _REQUEST.get_raw_body()
+      local body, err = _REQUEST.get_raw_body(max_allowed_file_size)
       if not body then
         return nil, err, CONTENT_TYPE_JSON
       end
 
-      local json = cjson.decode(body)
+      local json = cjson.decode_with_array_mt(body)
       if type(json) ~= "table" then
         return nil, "invalid json body", CONTENT_TYPE_JSON
       end
@@ -853,7 +881,7 @@ local function new(self)
       return json, nil, CONTENT_TYPE_JSON
 
     elseif find(content_type_lower, CONTENT_TYPE_FORM_DATA, 1, true) == 1 then
-      local body, err = _REQUEST.get_raw_body()
+      local body, err = _REQUEST.get_raw_body(max_allowed_file_size)
       if not body then
         return nil, err, CONTENT_TYPE_FORM_DATA
       end

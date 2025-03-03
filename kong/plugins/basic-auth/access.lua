@@ -17,9 +17,6 @@ local HEADERS_CREDENTIAL_IDENTIFIER = constants.HEADERS.CREDENTIAL_IDENTIFIER
 local HEADERS_ANONYMOUS             = constants.HEADERS.ANONYMOUS
 
 
-local realm = 'Basic realm="' .. _KONG._NAME .. '"'
-
-
 local _M = {}
 
 
@@ -31,9 +28,9 @@ local _M = {}
 -- @param {table} conf Plugin config
 -- @return {string} public_key
 -- @return {string} private_key
-local function retrieve_credentials(header_name, conf)
+local function retrieve_credentials(header_name, conf, header)
   local username, password
-  local authorization_header = kong.request.get_header(header_name)
+  local authorization_header = header or kong.request.get_header(header_name)
 
   if authorization_header then
     local iterator, iter_err = re_gmatch(authorization_header, "\\s*[Bb]asic\\s*(.+)", "oj")
@@ -154,41 +151,39 @@ local function set_consumer(consumer, credential)
 end
 
 
-local function fail_authentication()
-  return false, { status = 401, message = "Invalid authentication credentials" }
+local function unauthorized(message, www_auth_content)
+  return { status = 401, message = message, headers = { ["WWW-Authenticate"] = www_auth_content } }
 end
 
 
 local function do_authentication(conf)
+  local www_authenticate = "Basic realm=\"" .. conf.realm .. "\""
+  local authorization = kong.request.get_header("authorization")
+  local proxy_authorization = kong.request.get_header("proxy-authorization")
+
   -- If both headers are missing, return 401
-  if not (kong.request.get_header("authorization") or kong.request.get_header("proxy-authorization")) then
-    return false, {
-      status = 401,
-      message = "Unauthorized",
-      headers = {
-        ["WWW-Authenticate"] = realm
-      }
-    }
+  if not (authorization or proxy_authorization) then
+    return false, unauthorized("Unauthorized", www_authenticate)
   end
 
   local credential
-  local given_username, given_password = retrieve_credentials("proxy-authorization", conf)
+  local given_username, given_password = retrieve_credentials("proxy-authorization", conf, proxy_authorization)
   if given_username and given_password then
     credential = load_credential_from_db(given_username)
   end
 
   -- Try with the authorization header
   if not credential then
-    given_username, given_password = retrieve_credentials("authorization", conf)
+    given_username, given_password = retrieve_credentials("authorization", conf, authorization)
     if given_username and given_password then
       credential = load_credential_from_db(given_username)
     else
-      return fail_authentication()
+      return false, unauthorized("Unauthorized", www_authenticate)
     end
   end
 
   if not credential or not validate_credentials(credential, given_password) then
-    return fail_authentication()
+    return false, unauthorized("Unauthorized", www_authenticate)
   end
 
   -- Retrieve consumer
@@ -223,6 +218,12 @@ function _M.execute(conf)
                                                 conf.anonymous, true)
       if err then
         return error(err)
+      end
+
+      if not consumer then
+        local err_msg = "anonymous consumer " .. conf.anonymous .. " is configured but doesn't exist"
+        kong.log.err(err_msg)
+        return kong.response.error(500, err_msg)
       end
 
       set_consumer(consumer)

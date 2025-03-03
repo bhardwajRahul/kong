@@ -2,6 +2,7 @@ local acme = require "resty.acme.client"
 local util = require "resty.acme.util"
 local x509 = require "resty.openssl.x509"
 local reserved_words = require "kong.plugins.acme.reserved_words"
+local config_adapters = require "kong.plugins.acme.storage.config_adapters"
 
 local cjson = require "cjson"
 local ngx_ssl = require "ngx.ssl"
@@ -82,7 +83,7 @@ local function new_storage_adapter(conf)
   if not storage then
     return nil, nil, "storage is nil"
   end
-  local storage_config = conf.storage_config[storage]
+  local storage_config = config_adapters.adapt_config(conf.storage, conf.storage_config)
   if not storage_config then
     return nil, nil, storage .. " is not defined in plugin storage config"
   end
@@ -101,6 +102,7 @@ local function new(conf)
   if err then
     return nil, err
   end
+  local storage_config = config_adapters.adapt_config(conf.storage, conf.storage_config)
   local account_name = account_name(conf)
   local account, err = cached_get(st, account_name, deserialize_account)
   if err then
@@ -112,8 +114,8 @@ local function new(conf)
 
   -- backward compat
   local url = conf.api_uri
-  if not ngx_re_match(url, "/directory$") then
-    if not ngx_re_match(url, "/$") then
+  if not ngx_re_match(url, "/directory$", "jo") then
+    if not ngx_re_match(url, "/$", "jo") then
       url = url .. "/"
     end
     url = url .. "directory"
@@ -125,7 +127,7 @@ local function new(conf)
     account_key = account.key,
     api_uri = url,
     storage_adapter = storage_full_path,
-    storage_config = conf.storage_config[conf.storage],
+    storage_config = storage_config,
     eab_kid = conf.eab_kid,
     eab_hmac_key = conf.eab_hmac_key,
     challenge_start_callback = hybrid_mode and function()
@@ -163,7 +165,8 @@ local function order(acme_client, host, key, cert_type, rsa_key_size)
 
   local cert, err = acme_client:order_certificate(key, host)
   if err then
-    return nil, nil, "could not create certificate for host: ", host, " err: " .. err
+    local concatErr =  "could not create certificate for host: " .. host .. " err: " .. err
+    return nil, nil, concatErr
   end
 
   return cert, key, nil
@@ -192,9 +195,7 @@ local function save_dao(host, key, cert)
   })
 
   if err then
-    local ok, err_2 = kong.db.certificates:delete({
-      id = cert_entity.id,
-    })
+    local ok, err_2 = kong.db.certificates:delete(cert_entity)
     if not ok then
       kong.log.warn("error cleaning up certificate entity ", cert_entity.id, ": ", err_2)
     end
@@ -202,12 +203,9 @@ local function save_dao(host, key, cert)
   end
 
   if old_sni_entity and old_sni_entity.certificate then
-    local id = old_sni_entity.certificate.id
-    local ok, err = kong.db.certificates:delete({
-      id = id,
-    })
+    local ok, err = kong.db.certificates:delete(old_sni_entity.certificate)
     if not ok then
-      kong.log.warn("error deleting expired certificate entity ", id, ": ", err)
+      kong.log.warn("error deleting expired certificate entity ", old_sni_entity.certificate.id, ": ", err)
     end
   end
 end
@@ -227,35 +225,23 @@ end
 
 local function get_account_key(conf)
   local kid = conf.key_id
-  local lookup = {kid = kid}
+  local lookup = { kid = kid }
 
   if conf.key_set then
     local key_set, key_set_err = kong.db.key_sets:select_by_name(conf.key_set)
 
     if key_set_err then
-      kong.log.warn("error loading keyset ", conf.key_set, " : ", key_set_err)
-      return nil, key_set_err
+      return nil, "could not load keyset: " .. key_set_err
     end
 
-    if not key_set then
-      kong.log.warn("could not load keyset nil value was returned")
-      return nil, error("nil returned by key_sets:select_by_name for key_set ", conf.key_set)
-    end
-
-    lookup.set = {id = key_set.id}
+    lookup.set = { id = key_set.id }
   end
 
   local cache_key = kong.db.keys:cache_key(lookup)
   local key, key_err = kong.db.keys:select_by_cache_key(cache_key)
 
   if key_err then
-    kong.log.warn("error loading key ", kid, " : ", key_err)
-    return nil, key_err
-  end
-
-  if not key then
-    kong.log.warn("could not load key nil value was returned")
-    return nil, error("nil returned by keys:select_by_cache_key for key ", conf.key_id)
+    return nil, "could not load keys: " .. key_err
   end
 
   return kong.db.keys:get_privkey(key)
@@ -404,7 +390,7 @@ local function load_certkey(conf, host)
     return nil, "DAO returns empty SNI entity or Certificte entity"
   end
 
-  local cert_entity, err = kong.db.certificates:select({ id = sni_entity.certificate.id })
+  local cert_entity, err = kong.db.certificates:select(sni_entity.certificate)
   if err then
     kong.log.info("can't read certificate ", sni_entity.certificate.id, " from db",
                   ", deleting renew config")
@@ -507,21 +493,9 @@ local function renew_certificate_storage(conf)
 
 end
 
-local function renew_certificate(premature)
-  if premature then
-    return
-  end
-
-  for plugin, err in kong.db.plugins:each(1000) do
-    if err then
-      kong.log.warn("error fetching plugin: ", err)
-    end
-
-    if plugin.name == "acme" then
-      kong.log.info("renew storage configured in acme plugin: ", plugin.id)
-      renew_certificate_storage(plugin.config)
-    end
-  end
+local function renew_certificate(config)
+  kong.log.info("renew storage configured in acme plugin: ", config.__plugin_id)
+  renew_certificate_storage(config)
 end
 
 local function load_renew_hosts(conf)

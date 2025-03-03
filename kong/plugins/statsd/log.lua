@@ -132,8 +132,7 @@ local get_workspace_id = {
     return ws.get_workspace_id()
   end,
   workspace_name = function()
-    local workspace = ws.get_workspace()
-    return workspace.name
+    return ws.get_workspace_name()
   end
 }
 
@@ -442,7 +441,7 @@ function _M.execute(conf)
   kong.log.debug("Status code is within given status code ranges")
 
   if not worker_id then
-    worker_id = ngx.worker.id()
+    worker_id = ngx.worker.id() or -1
   end
 
   conf._prefix = conf.prefix
